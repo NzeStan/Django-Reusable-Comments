@@ -1,0 +1,7 @@
+include LICENSE
+include README.md
+include CHANGELOG.md
+recursive-include django_comments/locale *
+recursive-include django_comments/templates *
+recursive-include django_comments/static *
+recursive-include docs *
