@@ -151,6 +151,9 @@ class Comment(AbstractCommentBase):
             models.Index(fields=['parent']),
             models.Index(fields=['user']),
             models.Index(fields=['thread_id']),
+            models.Index(fields=['is_public', 'is_removed', 'created_at']),  # Common filter combo
+            models.Index(fields=['content_type', 'object_id', 'is_public']),  # For public comments query
+            models.Index(fields=['user', 'created_at']),  # For user's comments
         ]
         
     def __str__(self):

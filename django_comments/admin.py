@@ -3,7 +3,7 @@ from django.contrib.contenttypes.models import ContentType
 from django.utils.html import format_html
 from django.utils.translation import gettext_lazy as _
 from django.urls import reverse
-from django.db.models import Count
+from django.db.models import Count, Prefetch
 from django import forms
 
 from .models import Comment, CommentFlag
@@ -76,7 +76,7 @@ class ContentTypeListFilter(admin.SimpleListFilter):
 
 @admin.register(Comment)
 class CommentAdmin(admin.ModelAdmin):
-    form = CommentAdminForm  # Add this line to use the custom form
+    form = CommentAdminForm
     
     list_display = (
         'id', 'content_snippet', 'user_info', 'content_object_link',
@@ -114,16 +114,41 @@ class CommentAdmin(admin.ModelAdmin):
     )
     actions = ['approve_comments', 'reject_comments', 'mark_as_removed']
     
+    def get_queryset(self, request):
+        """
+        OPTIMIZED: Prefetch all related data to prevent N+1 queries.
+        This is critical for admin list view performance.
+        """
+        queryset = super().get_queryset(request)
+        
+        # Select related for foreign keys
+        queryset = queryset.select_related(
+            'user',
+            'content_type',
+            'parent',
+            'parent__user'
+        )
+        
+        # Prefetch related for many-to-many and reverse foreign keys
+        queryset = queryset.prefetch_related(
+            Prefetch(
+                'flags',
+                queryset=CommentFlag.objects.select_related('user')
+            )
+        )
+        
+        # Annotate counts to avoid extra queries
+        queryset = queryset.annotate(
+            flag_count=Count('flags', distinct=True)
+        )
+        
+        return queryset
 
     def flag_count(self, obj):
+        """Display flag count (uses annotated value)."""
         return obj.flag_count
     flag_count.short_description = _('Flags')
     flag_count.admin_order_field = 'flag_count'
-    
-    def get_queryset(self, request):
-        return super().get_queryset(request).annotate(
-            flag_count=Count('flags')
-        )
     
     def content_snippet(self, obj):
         """Display a snippet of the comment content."""
@@ -133,7 +158,10 @@ class CommentAdmin(admin.ModelAdmin):
     content_snippet.short_description = _('Content')
     
     def user_info(self, obj):
-        """Display user information with a safe link to the user's admin change page."""
+        """
+        Display user information with a safe link to the user's admin change page.
+        OPTIMIZED: User is already prefetched via select_related.
+        """
         if obj.user:
             try:
                 user_ct = ContentType.objects.get_for_model(obj.user)
@@ -145,9 +173,13 @@ class CommentAdmin(admin.ModelAdmin):
             except Exception:
                 return obj.get_user_name()
         return obj.get_user_name()
+    user_info.short_description = _('User')
     
     def content_object_link(self, obj):
-        """Link to the admin change page of the content object."""
+        """
+        Link to the admin change page of the content object.
+        OPTIMIZED: content_type is already prefetched.
+        """
         try:
             ct = obj.content_type
             model_admin_url = f"admin:{ct.app_label}_{ct.model}_change"
@@ -156,10 +188,14 @@ class CommentAdmin(admin.ModelAdmin):
         except Exception:
             # Fallback if the reverse fails or object doesn't exist
             return str(obj.content_object) or "(deleted)"
-
+    content_object_link.short_description = _('Content Object')
     
     def flags_display(self, obj):
-        """Display flags for this comment."""
+        """
+        Display flags for this comment.
+        OPTIMIZED: flags are already prefetched with users.
+        """
+        # Access prefetched flags (no extra query)
         flags = obj.flags.all()
         if not flags:
             return _('No flags')
@@ -213,8 +249,27 @@ class CommentFlagAdmin(admin.ModelAdmin):
     date_hierarchy = 'created_at'
     raw_id_fields = ('comment', 'user')
     
+    def get_queryset(self, request):
+        """
+        OPTIMIZED: Prefetch related data to prevent N+1 queries.
+        """
+        queryset = super().get_queryset(request)
+        
+        # Select related for foreign keys
+        queryset = queryset.select_related(
+            'user',
+            'comment',
+            'comment__user',
+            'comment__content_type'
+        )
+        
+        return queryset
+    
     def comment_snippet(self, obj):
-        """Display a snippet of the comment content."""
+        """
+        Display a snippet of the comment content.
+        OPTIMIZED: comment is already prefetched via select_related.
+        """
         if len(obj.comment.content) > 50:
             return f"{obj.comment.content[:50]}..."
         return obj.comment.content

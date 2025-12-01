@@ -76,9 +76,31 @@ REST_FRAMEWORK = {
 }
 
 # Django Comments settings
+# FIXED: Use the correct app_label for test models
 DJANGO_COMMENTS_CONFIG = {
-    'COMMENTABLE_MODELS': ['tests.testpost'],
+    # The app_label for models in django_comments/tests/models.py is 'tests'
+    # Model name is case-insensitive in Django
+    'COMMENTABLE_MODELS': [
+        'tests.testpost',           # Main test model
+        'tests.testpostwithuuid',   # UUID test model
+    ],
     'USE_UUIDS': False,
     'MODERATOR_REQUIRED': False,
     'ALLOW_ANONYMOUS': True,
+    'MAX_COMMENT_DEPTH': 3,
+    'MAX_COMMENT_LENGTH': 3000,
+}
+
+# For development - use database cache
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.db.DatabaseCache',
+        'LOCATION': 'comment_cache_table',
+    }
+}
+
+# Optional: Configure cache timeout
+DJANGO_COMMENTS_CONFIG = {
+    # ... your existing settings ...
+    'CACHE_TIMEOUT': 3600,  # 1 hour
 }

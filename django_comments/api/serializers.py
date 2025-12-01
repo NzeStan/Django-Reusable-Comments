@@ -20,6 +20,7 @@ from django.contrib.auth import get_user_model
 Comment = get_comment_model()
 User = get_user_model()
 
+
 class UserSerializer(serializers.ModelSerializer):
     """
     Serializer for the User model, used within CommentSerializer.
@@ -108,6 +109,7 @@ class RecursiveCommentSerializer(serializers.Serializer):
 class CommentSerializer(serializers.ModelSerializer):
     """
     Serializer for comments with support for nested comments.
+    OPTIMIZED: Uses annotated fields instead of causing extra queries.
     """
 
     content_type = serializers.CharField(
@@ -135,7 +137,17 @@ class CommentSerializer(serializers.ModelSerializer):
     children = RecursiveCommentSerializer(many=True, read_only=True)
     depth = serializers.IntegerField(read_only=True)
 
-    flags_count = serializers.SerializerMethodField()
+    # OPTIMIZED: Use annotated values instead of causing queries
+    flags_count = serializers.IntegerField(
+        source='flags_count_annotated',
+        read_only=True,
+        default=0
+    )
+    children_count = serializers.IntegerField(
+        source='children_count_annotated',
+        read_only=True,
+        default=0
+    )
     is_flagged = serializers.SerializerMethodField()
 
     class Meta:
@@ -143,13 +155,13 @@ class CommentSerializer(serializers.ModelSerializer):
         fields = (
             'id', 'content', 'content_type', 'object_id', 'content_object_info', 
             'user', 'user_info', 'user_name', 'user_email', 'user_url',
-            'parent', 'children', 'depth', 'thread_id',
+            'parent', 'children', 'depth', 'thread_id', 'children_count',
             'created_at', 'updated_at', 'is_public', 'is_removed',
             'flags_count', 'is_flagged',
         )
         read_only_fields = (
             'id', 'content_object_info', 'user_info', 'children', 'thread_id',
-            'depth', 'created_at', 'updated_at', 'is_flagged',
+            'depth', 'created_at', 'updated_at', 'is_flagged', 'children_count',
         )
 
     def validate_parent(self, value):
@@ -211,7 +223,6 @@ class CommentSerializer(serializers.ModelSerializer):
         """
         Validate that the content type is allowed.
         """
-        print(f"Validating content type: '{value}'")
         try:
             model = get_model_from_content_type_string(value)
             if not model:
@@ -277,7 +288,6 @@ class CommentSerializer(serializers.ModelSerializer):
 
         return data
 
-
     def get_user_url(self, user):
         """
         Hook to allow host project to define how user_url is derived.
@@ -285,10 +295,10 @@ class CommentSerializer(serializers.ModelSerializer):
         """
         return getattr(user, "url", "")
 
-
     def get_content_object_info(self, obj) -> Optional[Dict[str, Any]]:
         """
         Get information about the commented object.
+        OPTIMIZED: content_type is already prefetched.
         """
         if not obj.content_object:
             return None
@@ -299,17 +309,18 @@ class CommentSerializer(serializers.ModelSerializer):
             'object_repr': str(obj.content_object),
         }
     
-    def get_flags_count(self, obj) -> int:
-        """
-        Get the number of flags for the comment.
-        """
-        return obj.flags.count()
-    
     def get_is_flagged(self, obj) -> bool:
         """
         Check if the comment has been flagged.
+        OPTIMIZED: Uses annotated flags_count_annotated to avoid query.
         """
-        return obj.flags.exists()
+        # Try to get from annotation first (most efficient)
+        if hasattr(obj, 'flags_count_annotated'):
+            return obj.flags_count_annotated > 0
+        
+        # Fallback for cases without annotation
+        # (e.g., when object is created in serializer)
+        return obj.flags.exists() if hasattr(obj, 'flags') else False
     
     def create(self, validated_data):
         """

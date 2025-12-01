@@ -1,3 +1,4 @@
+# django_comments/apps.py
 from django.apps import AppConfig
 from django.utils.translation import gettext_lazy as _
 
@@ -12,6 +13,7 @@ class DjangoCommentsConfig(AppConfig):
         Import signals to register signal handlers.
         """
         import django_comments.signals
+        import django_comments.cache  # Add this line to connect cache signals
         
         # Set up logging
         import logging
@@ -19,7 +21,6 @@ class DjangoCommentsConfig(AppConfig):
         
         logger = logging.getLogger(comments_settings.LOGGER_NAME)
         if not logger.handlers:
-            # Only add handler if none exist
             handler = logging.StreamHandler()
             formatter = logging.Formatter(
                 '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
@@ -28,5 +29,4 @@ class DjangoCommentsConfig(AppConfig):
             logger.addHandler(handler)
             logger.setLevel(logging.INFO)
             
-        # Log that the app is ready
-        logger.info('Django Comments app initialized')
+        logger.info('Django Comments app initialized with performance optimizations')
