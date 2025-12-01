@@ -4,7 +4,6 @@ import logging
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
-
 from ...conf import comments_settings
 from ...utils import get_comment_model
 

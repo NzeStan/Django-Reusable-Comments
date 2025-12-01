@@ -84,7 +84,8 @@ class TestCommentCreateAPI:
             'content': 'This is a test comment from anonymous.',
             'content_type': f"{content_type.app_label}.{content_type.model}",
             'object_id': test_post.id,
-            'user_name': 'Anonymous User'
+            'user_name': 'Anonymous User',
+            'user_email': 'anonymous@example.com'  # Add this line
         }
         
         response = api_client.post(url, data, format='json')

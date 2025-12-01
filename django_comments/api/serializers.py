@@ -237,6 +237,10 @@ class CommentSerializer(serializers.ModelSerializer):
         - Autofill user data for authenticated users.
         - Apply moderation settings.
         """
+        # Skip validation for partial updates (PATCH) that don't involve user changes
+        if self.partial and 'user' not in data:
+            return data
+            
         request = self.context.get("request")
         user = data.get("user")
 
@@ -267,7 +271,8 @@ class CommentSerializer(serializers.ModelSerializer):
             data["user_email"] = user.email
             data["user_url"] = self.get_user_url(user)
 
-        if comments_settings.MODERATOR_REQUIRED:
+        # Only apply moderation for new comments
+        if not self.instance and comments_settings.MODERATOR_REQUIRED:
             data["is_public"] = False
 
         return data
