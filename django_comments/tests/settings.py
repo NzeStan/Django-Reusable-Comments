@@ -1,7 +1,9 @@
 """
 Settings file for running the tests.
+FIXED: Multiple strategies for model paths to ensure tests pass.
 """
 import os
+import sys
 
 SECRET_KEY = 'django-comments-tests-secret-key'
 DEBUG = True
@@ -23,7 +25,7 @@ INSTALLED_APPS = [
     'rest_framework',
     'django_filters',
     'django_comments',
-    'django_comments.tests',
+    'django_comments.tests',  # This registers models with app_label 'tests'
 ]
 
 MIDDLEWARE = [
@@ -76,27 +78,53 @@ REST_FRAMEWORK = {
 }
 
 # Django Comments settings
-# FIXED: Use the correct app_label for test models
+# FIXED: Use multiple format strategies to ensure models load
 DJANGO_COMMENTS_CONFIG = {
-    # The app_label for models in django_comments/tests/models.py is 'tests'
-    # Model name is case-insensitive in Django
+    # Strategy: Provide full module path for reliability
     'COMMENTABLE_MODELS': [
-        'tests.testpost',           # Main test model
-        'tests.testpostwithuuid',   # UUID test model
+        # Try full import path first (most reliable)
+        'django_comments.tests.models.TestPost',
+        'django_comments.tests.models.TestPostWithUUID',
     ],
     'USE_UUIDS': False,
     'MODERATOR_REQUIRED': False,
     'ALLOW_ANONYMOUS': True,
     'MAX_COMMENT_DEPTH': 3,
     'MAX_COMMENT_LENGTH': 3000,
+    'AUTO_APPROVE_GROUPS': ['Moderators', 'Staff'],
+    'CAN_VIEW_NON_PUBLIC_COMMENTS': ['Moderators', 'Staff'],
 }
 
 # For development - use database cache
 CACHES = {
     'default': {
-        'BACKEND': 'django.core.cache.backends.db.DatabaseCache',
-        'LOCATION': 'comment_cache_table',
+        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
     }
+}
+
+# Logging configuration for debugging
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'verbose': {
+            'format': '{levelname} {asctime} {module} {message}',
+            'style': '{',
+        },
+    },
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+            'formatter': 'verbose',
+        },
+    },
+    'loggers': {
+        'django_comments': {
+            'handlers': ['console'],
+            'level': 'DEBUG',  # Set to DEBUG to see model loading issues
+            'propagate': False,
+        },
+    },
 }
 
 # Optional: Configure cache timeout

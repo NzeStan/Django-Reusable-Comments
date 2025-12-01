@@ -51,6 +51,8 @@ def get_commentable_models() -> List[Type[models.Model]]:
     """
     Return a list of model classes that can be commented on.
     Accepts either 'app_label.ModelName' or 'module.path.ModelClass'.
+    
+    IMPROVED: Better error handling and multiple lookup strategies.
     """
     model_paths = comments_settings.COMMENTABLE_MODELS
 
@@ -60,24 +62,63 @@ def get_commentable_models() -> List[Type[models.Model]]:
 
     models_list = []
     for model_path in model_paths:
-        # Try app_label.ModelName
+        model = None
+        
+        # Strategy 1: Try app_label.ModelName (case-insensitive)
         try:
             model = apps.get_model(model_path)
             if model:
                 models_list.append(model)
+                logger.debug(f"Loaded model '{model_path}' via apps.get_model")
                 continue
-        except (ValueError, LookupError):
-            pass
+        except (ValueError, LookupError) as e:
+            logger.debug(f"apps.get_model failed for '{model_path}': {e}")
+        
+        # Strategy 2: Try with different case variations
+        if '.' in model_path:
+            app_label, model_name = model_path.split('.', 1)
+            # Try lowercase model name
+            try:
+                model = apps.get_model(app_label, model_name.lower())
+                if model:
+                    models_list.append(model)
+                    logger.debug(f"Loaded model '{model_path}' with lowercase: {app_label}.{model_name.lower()}")
+                    continue
+            except (ValueError, LookupError) as e:
+                logger.debug(f"Lowercase attempt failed for '{model_path}': {e}")
+            
+            # Try original case
+            try:
+                model = apps.get_model(app_label, model_name)
+                if model:
+                    models_list.append(model)
+                    logger.debug(f"Loaded model '{model_path}' with original case: {app_label}.{model_name}")
+                    continue
+            except (ValueError, LookupError) as e:
+                logger.debug(f"Original case attempt failed for '{model_path}': {e}")
 
-        # Try module.path.ModelClass
+        # Strategy 3: Try module.path.ModelClass format
         try:
-            module_path, class_name = model_path.rsplit('.', 1)
-            module = importlib.import_module(module_path)
-            model = getattr(module, class_name)
-            if issubclass(model, models.Model):
-                models_list.append(model)
+            if model_path.count('.') >= 2:  # Has at least module.submodule.Class
+                module_path, class_name = model_path.rsplit('.', 1)
+                module = importlib.import_module(module_path)
+                model = getattr(module, class_name)
+                if model and issubclass(model, models.Model):
+                    models_list.append(model)
+                    logger.debug(f"Loaded model '{model_path}' via import: {module_path}.{class_name}")
+                    continue
         except (ImportError, AttributeError, ValueError, TypeError) as e:
-            logger.error(f"Could not load model '{model_path}': {e}")
+            logger.debug(f"Import attempt failed for '{model_path}': {e}")
+        
+        # If we got here, all strategies failed
+        logger.error(f"Could not load model '{model_path}' using any strategy. "
+                    f"Available apps: {list(apps.app_configs.keys())}")
+
+    if not models_list:
+        logger.warning(f"No models could be loaded from COMMENTABLE_MODELS: {model_paths}")
+    else:
+        logger.info(f"Successfully loaded {len(models_list)} commentable models: "
+                   f"{[m._meta.label for m in models_list]}")
 
     return models_list
 
