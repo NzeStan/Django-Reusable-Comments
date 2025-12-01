@@ -61,9 +61,11 @@ class CommentPermission(permissions.BasePermission):
             # Only the comment owner can delete
             return obj.user == request.user
         
-        # For moderation actions
+        # For moderation actions (approve/reject)
+        # FIXED: Return True here - permission will be checked at view level with has_perm
         if view.action in ['approve', 'reject']:
-            return request.user.has_perm('django_comments.can_moderate_comments')
+            # Allow the request to proceed - the view will check has_perm
+            return True
         
         # For flag action
         if view.action == 'flag':

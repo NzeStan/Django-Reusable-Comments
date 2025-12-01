@@ -46,7 +46,8 @@ class CommentViewSet(viewsets.ModelViewSet):
         filters.SearchFilter,
         filters.OrderingFilter
     ]
-    search_fields = ['content', 'user_name']
+    # FIXED: Include user__username in search fields
+    search_fields = ['content', 'user_name', 'user__username', 'user__first_name', 'user__last_name']
     ordering_fields = ['created_at', 'updated_at']
     ordering = ['-created_at']
     

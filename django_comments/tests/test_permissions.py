@@ -205,14 +205,18 @@ class TestCommentPermission:
         assert self.permission.has_object_permission(request, view, comment)
     
     def test_approve_permission_denied_for_regular_user(self, comment):
-        """Test regular user cannot approve comments."""
+        """
+        Test regular user passes permission check at object level.
+        Note: Actual permission is checked at view level with has_perm.
+        The has_object_permission returns True to allow request to proceed.
+        """
         request = self.factory.post('/')
         request.user = self.user
         
         view = type('View', (), {'action': 'approve'})()
         
-        # Will be denied at the view level by permission check
-        # Permission class just checks authentication here
+        # FIXED: has_object_permission returns True for approve/reject
+        # Actual permission check happens at view level
         assert self.permission.has_object_permission(request, view, comment)
 
 

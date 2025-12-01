@@ -563,8 +563,9 @@ class TestCommentValidation:
     def test_create_comment_for_non_commentable_model(self, authenticated_client, test_post, monkeypatch):
         """Test that comments on non-commentable models are rejected."""
         from ..conf import comments_settings
-        # Set commentable models to empty list
-        monkeypatch.setattr(comments_settings, 'COMMENTABLE_MODELS', [])
+        # Set commentable models to a list that DOESN'T include TestPost
+        # Use a different model to make it clear TestPost is not allowed
+        monkeypatch.setattr(comments_settings, 'COMMENTABLE_MODELS', ['some_other_app.SomeOtherModel'])
         
         url = reverse('django_comments_api:comment-list')
         content_type = ContentType.objects.get_for_model(test_post)
