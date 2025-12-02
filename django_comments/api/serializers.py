@@ -2,15 +2,11 @@ from typing import Dict, Any, Optional
 from django.contrib.contenttypes.models import ContentType
 from django.utils.translation import gettext_lazy as _
 from rest_framework import serializers
-from rest_framework.exceptions import ValidationError
-
 from ..conf import comments_settings
-from ..exceptions import MaximumThreadDepthExceeded, CommentDisallowed
 from ..models import CommentFlag
 from ..utils import (
     get_comment_model,
     get_model_from_content_type_string,
-    get_object_from_content_type_and_id,
     is_comment_content_allowed,
     filter_profanity
 )
@@ -190,7 +186,10 @@ class CommentSerializer(serializers.ModelSerializer):
         # Check thread depth limits
         max_depth = comments_settings.MAX_COMMENT_DEPTH
         if max_depth is not None and value.depth >= max_depth:
-            raise MaximumThreadDepthExceeded(max_depth=max_depth)
+            # FIXED: Raise serializers.ValidationError instead of custom exception
+            raise serializers.ValidationError(
+                _("Maximum thread depth of {max_depth} exceeded.").format(max_depth=max_depth)
+            )
             
         return value
     
@@ -198,8 +197,18 @@ class CommentSerializer(serializers.ModelSerializer):
         """
         Validate that the comment content is allowed.
         """
+        # Check max length first (more specific error message)
+        if len(value) > comments_settings.MAX_COMMENT_LENGTH:
+            raise serializers.ValidationError(
+                _("Comment content exceeds maximum length of {max_length} characters.").format(
+                    max_length=comments_settings.MAX_COMMENT_LENGTH
+                )
+            )
+        
+        # Then check other content restrictions
         if not is_comment_content_allowed(value):
-            raise CommentDisallowed(
+            # FIXED: Raise serializers.ValidationError instead of custom exception
+            raise serializers.ValidationError(
                 _("Comment content is not allowed (may contain spam or profanity)")
             )
         

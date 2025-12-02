@@ -33,3 +33,7 @@ ensure_newline_before_comments = true
 DJANGO_SETTINGS_MODULE = "django_comments.tests.settings"
 python_files = "test_*.py"
 testpaths = ["django_comments/tests/"]
+# Ignore model classes that start with "Test"
+filterwarnings = [
+    "ignore::pytest.PytestCollectionWarning",
+]

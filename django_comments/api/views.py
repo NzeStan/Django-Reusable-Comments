@@ -1,14 +1,12 @@
 from django.contrib.contenttypes.models import ContentType
 from django.db import models
-from django.shortcuts import get_object_or_404
-from django.utils.translation import gettext_lazy as _
 
+from django.utils.translation import gettext_lazy as _
 from rest_framework import viewsets, mixins, status, filters
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
 from django_filters.rest_framework import DjangoFilterBackend
-
 from ..conf import comments_settings
 from ..exceptions import CommentModerated
 from ..models import CommentFlag
@@ -16,8 +14,6 @@ from ..signals import flag_comment, approve_comment, reject_comment
 from ..utils import (
     get_comment_model,
     get_model_from_content_type_string,
-    get_object_from_content_type_and_id,
-    check_comment_permissions
 )
 from .serializers import (
     CommentSerializer, 
@@ -26,7 +22,6 @@ from .serializers import (
 )
 from .permissions import (
     CommentPermission, 
-    IsOwnerOrReadOnly
 )
 from .filtersets import CommentFilterSet
 

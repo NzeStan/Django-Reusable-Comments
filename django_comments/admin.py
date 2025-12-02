@@ -7,7 +7,7 @@ from django.db.models import Count, Prefetch
 from django import forms
 
 from .models import Comment, CommentFlag
-from .utils import get_comment_model, get_model_from_content_type_string
+from .utils import get_comment_model
 from .signals import approve_comment, reject_comment
 
 
