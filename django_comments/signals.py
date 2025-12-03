@@ -30,7 +30,22 @@ def on_comment_pre_save(sender, instance, **kwargs):
 
 @receiver(post_save, sender=Comment)
 def on_comment_post_save(sender, instance, created, **kwargs):
+    """
+    Handle comment post-save.
+    IMPROVED: Now applies automatic flags for spam/profanity on creation.
+    """
     safe_send(comment_post_save, sender=sender, comment=instance, created=created, **kwargs)
+    
+    # Apply automatic flags for new comments if needed
+    if created:
+        from .utils import apply_automatic_flags
+        try:
+            apply_automatic_flags(instance)
+        except Exception as e:
+            import logging
+            from .conf import comments_settings
+            logger = logging.getLogger(comments_settings.LOGGER_NAME)
+            logger.error(f"Failed to apply automatic flags to comment {instance.pk}: {e}")
 
 
 @receiver(pre_delete, sender=Comment)
@@ -89,7 +104,6 @@ def flag_comment(comment, user, flag='other', reason=''):
         )
     
     return comment_flag
-
 
 
 def approve_comment(comment, moderator=None):

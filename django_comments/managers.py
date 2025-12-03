@@ -161,20 +161,6 @@ class CommentQuerySet(models.QuerySet):
             Q(user__last_name__icontains=query)
         ).with_user_and_content_type()
     
-    def create_with_flags(self, **kwargs):
-        """
-        Create a comment and flag it based on given flags.
-        """
-        flags = kwargs.pop('flags', [])
-        comment = self.create(**kwargs)
-        
-        # Add flags if any were provided
-        if flags and hasattr(comment, 'flags'):
-            for flag_data in flags:
-                comment.flags.create(**flag_data)
-        
-        return comment
-    
     def with_full_thread(self):
         """
         Optimize for displaying full comment threads.

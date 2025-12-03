@@ -64,6 +64,14 @@ DJANGO_COMMENTS_CONFIG = {
 python manage.py migrate django_comments
 ```
 
+**⚠️ IMPORTANT - UUID Migration Warning:**
+If you're switching from integer PKs to UUIDs (or vice versa), migration `0004_alter_comment_id_alter_commentflag_id.py` changes the primary key type. This migration:
+- **Requires a fresh database** (no existing comment data)
+- **Is destructive** if run on a database with existing comments
+- Should only be used during initial development or with a proper data migration strategy
+
+For production databases, stick with your initial choice of USE_UUIDS setting.
+
 ### 5. Include URL patterns
 
 ```python
@@ -242,6 +250,10 @@ All configuration is done via `DJANGO_COMMENTS_CONFIG` in your settings:
 
 ```python
 DJANGO_COMMENTS_CONFIG = {
+    # =========================================================================
+    # CORE SETTINGS (Actively Used)
+    # =========================================================================
+    
     # Models that can receive comments
     'COMMENTABLE_MODELS': ['blog.Post', 'products.Product'],
     
@@ -251,42 +263,37 @@ DJANGO_COMMENTS_CONFIG = {
     # Moderation
     'MODERATOR_REQUIRED': False,  # Require approval before comments are public
     'AUTO_APPROVE_GROUPS': ['Moderators', 'Staff'],  # Auto-approve for these groups
+    'CAN_VIEW_NON_PUBLIC_COMMENTS': ['Moderators', 'Staff'],  # Who can see hidden comments
     
     # Threading
     'MAX_COMMENT_DEPTH': 3,  # Maximum nesting level (None = unlimited)
     
     # Content
     'MAX_COMMENT_LENGTH': 3000,  # Maximum characters
-    'COMMENT_FORMAT': 'plain',  # 'plain', 'markdown', or 'html'
     
     # Anonymous comments
     'ALLOW_ANONYMOUS': True,
     
     # Sorting
     'DEFAULT_SORT': '-created_at',
-    'ALLOWED_SORTS': ['-created_at', 'created_at', '-updated_at', 'updated_at'],
-    
-    # Pagination
-    'PAGE_SIZE': 20,
-    
-    # Email notifications
-    'SEND_NOTIFICATIONS': False,
-    
-    # Spam detection
-    'SPAM_DETECTION_ENABLED': False,
-    'SPAM_WORDS': [],
-    'SPAM_ACTION': 'flag',  # 'flag', 'hide', or 'delete'
-    
-    # Profanity filtering
-    'PROFANITY_FILTERING': False,
-    'PROFANITY_LIST': [],
-    'PROFANITY_ACTION': 'censor',  # 'censor', 'flag', 'hide', or 'delete'
     
     # Cleanup
     'CLEANUP_AFTER_DAYS': None,  # Auto-remove old non-public comments
     
-    # Caching (optional, for fine-tuning)
+    # Spam detection
+    'SPAM_DETECTION_ENABLED': False,
+    'SPAM_WORDS': [],  # List of words to flag as spam
+    
+    # Profanity filtering
+    'PROFANITY_FILTERING': False,
+    'PROFANITY_LIST': [],  # List of words to censor
+    'PROFANITY_ACTION': 'censor',  # 'censor', 'flag', 'hide', or 'delete'
+    
+    # Caching
     'CACHE_TIMEOUT': 3600,  # Cache timeout in seconds (default: 1 hour)
+    
+    # Logging
+    'LOGGER_NAME': 'django_comments',
 }
 ```
 
@@ -313,15 +320,11 @@ count = get_comment_count_for_object(post)  # Fresh data
 
 The admin interface uses optimized queries to prevent N+1 problems:
 
-```python
-# In django admin at /admin/django_comments/comment/
-# All foreign keys and counts are prefetched automatically
-# - User information (select_related)
-# - Content type (select_related)
-# - Parent comments (select_related)
-# - Flags (prefetch_related)
-# - Children count (annotated)
-```
+- User information (select_related)
+- Content type (select_related)
+- Parent comments (select_related)
+- Flags (prefetch_related)
+- Children count (annotated)
 
 ### Database Indexes
 
@@ -398,9 +401,8 @@ class CustomComment(Comment):
         proxy = True  # Or set to False for separate table
 
 # settings.py
-DJANGO_COMMENTS_CONFIG = {
-    'COMMENT_MODEL': 'myapp.CustomComment',
-}
+# Note: Custom models are not yet fully supported
+# Stick with the built-in Comment or UUIDComment models
 ```
 
 ### Celery Integration
@@ -478,19 +480,24 @@ On a typical blog with 1000 posts and 10,000 comments:
 
 **Cache hit rates:** Typically 95%+ in production with proper cache warming
 
+## Known Limitations
+
+1. **UUID Migration**: Switching between integer and UUID primary keys requires a fresh database
+2. **Spam Detection**: Currently validates content but doesn't automatically hide/delete spam
+3. **Email Notifications**: Not yet implemented (planned for future release)
+4. **Rate Limiting**: Use Django REST Framework's throttling instead
+
+## Future Features (Coming Soon)
+
+- Email notifications for new comments
+- Markdown/HTML comment formatting
+- Advanced spam detection with ML
+- Real-time comment updates via WebSockets
+- Comment reactions (likes, upvotes, etc.)
+
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## Documentation
-
-For detailed documentation, including:
-- Performance optimization guide
-- Cache system usage
-- Advanced customization
-- Deployment best practices
-
-Visit: [Documentation](https://django-reusable-comments.readthedocs.io/) (coming soon)
 
 ## Support
 
@@ -500,3 +507,9 @@ Visit: [Documentation](https://django-reusable-comments.readthedocs.io/) (coming
 ## Changelog
 
 See [CHANGELOG.md](CHANGELOG.md) for version history and changes.
+
+## Credits
+
+Developed and maintained by Ifeanyi Stanley Nnamani.
+
+Special thanks to all contributors who have helped improve this package!

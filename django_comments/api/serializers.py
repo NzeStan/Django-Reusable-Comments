@@ -8,7 +8,8 @@ from ..utils import (
     get_comment_model,
     get_model_from_content_type_string,
     is_comment_content_allowed,
-    filter_profanity
+    process_comment_content,
+    apply_automatic_flags,
 )
 from django.contrib.auth import get_user_model
 
@@ -95,10 +96,30 @@ class CreateCommentFlagSerializer(serializers.ModelSerializer):
 
 class RecursiveCommentSerializer(serializers.Serializer):
     """
-    Serializer for handling children comments recursively.
+    Serializer for handling children comments recursively with depth limiting.
+    
+    IMPROVED: Now includes max_depth to prevent performance issues.
     """
     def to_representation(self, value):
-        serializer = CommentSerializer(value, context=self.context)
+        # Get max recursion depth from context or use default
+        max_depth = self.context.get('max_recursion_depth', 3)
+        current_depth = self.context.get('current_depth', 0)
+        
+        # If we've reached max depth, don't recurse further
+        if current_depth >= max_depth:
+            # Return minimal representation
+            return {
+                'id': str(value.pk),
+                'content': value.content[:100] + '...' if len(value.content) > 100 else value.content,
+                'has_children': value.children.exists() if hasattr(value, 'children') else False,
+                'depth_limit_reached': True
+            }
+        
+        # Create context with incremented depth
+        context = self.context.copy()
+        context['current_depth'] = current_depth + 1
+        
+        serializer = CommentSerializer(value, context=context)
         return serializer.data
 
 
@@ -107,8 +128,8 @@ class CommentSerializer(serializers.ModelSerializer):
     Serializer for comments with support for nested comments.
     
     OPTIMIZED: Uses annotated fields instead of causing extra queries.
-    FIXED: Handles integer object_id values properly.
-    FIXED: Prevents updating immutable fields (content_type, object_id).
+    IMPROVED: Complete validation with spam/profanity checking.
+    IMPROVED: Depth-limited recursion for children.
     """
 
     content_type = serializers.CharField(
@@ -200,6 +221,7 @@ class CommentSerializer(serializers.ModelSerializer):
     def validate_content(self, value):
         """
         Validate that the comment content is allowed.
+        IMPROVED: Now uses comprehensive validation from utils.
         """
         # Check max length first (more specific error message)
         if len(value) > comments_settings.MAX_COMMENT_LENGTH:
@@ -209,14 +231,14 @@ class CommentSerializer(serializers.ModelSerializer):
                 )
             )
         
-        # Then check other content restrictions
-        if not is_comment_content_allowed(value):
+        # Check if content is allowed (spam/profanity detection)
+        is_allowed, reason = is_comment_content_allowed(value)
+        if not is_allowed:
             raise serializers.ValidationError(
-                _("Comment content is not allowed (may contain spam or profanity)")
+                _("Comment content is not allowed: {reason}").format(reason=reason)
             )
         
-        # Filter profanity if enabled
-        return filter_profanity(value)
+        return value
     
     def validate_object_id(self, value):
         """
@@ -345,7 +367,8 @@ class CommentSerializer(serializers.ModelSerializer):
     
     def create(self, validated_data):
         """
-        Create a new comment.
+        Create a new comment with content processing.
+        IMPROVED: Now processes content for profanity and applies auto-flags.
         """
         # Extract content_type and object_id
         content_type_str = validated_data.pop('content_type')
@@ -355,12 +378,24 @@ class CommentSerializer(serializers.ModelSerializer):
         model = get_model_from_content_type_string(content_type_str)
         content_type = ContentType.objects.get_for_model(model)
         
+        # Process content for spam/profanity
+        original_content = validated_data['content']
+        processed_content, flags_to_apply = process_comment_content(original_content)
+        
+        # Update content if it was processed (e.g., profanity censored)
+        if processed_content != original_content:
+            validated_data['content'] = processed_content
+        
         # Create the comment
         comment = Comment.objects.create(
             content_type=content_type,
             object_id=object_id,
             **validated_data
         )
+        
+        # Apply automatic flags if needed
+        if flags_to_apply.get('auto_flag_spam') or flags_to_apply.get('auto_flag_profanity'):
+            apply_automatic_flags(comment)
         
         return comment
     
@@ -374,13 +409,17 @@ class CommentSerializer(serializers.ModelSerializer):
         - parent: The parent comment (for threading structure)
         - thread_id: The thread identifier
         - path: The materialized path for tree structure
-        
-        These fields are removed from validated_data to prevent errors.
         """
         # Remove immutable fields that should never be updated
         immutable_fields = ['content_type', 'object_id', 'parent', 'thread_id', 'path']
         for field in immutable_fields:
             validated_data.pop(field, None)
+        
+        # If content is being updated, process it for profanity
+        if 'content' in validated_data:
+            original_content = validated_data['content']
+            processed_content, _ = process_comment_content(original_content)
+            validated_data['content'] = processed_content
         
         # Use the default update behavior for remaining fields
         return super().update(instance, validated_data)

@@ -1,6 +1,6 @@
 from django.contrib.contenttypes.models import ContentType
 from django.db import models
-
+from django.core.cache import cache
 from django.utils.translation import gettext_lazy as _
 from rest_framework import viewsets, mixins, status, filters
 from rest_framework.decorators import action
@@ -28,10 +28,33 @@ from .filtersets import CommentFilterSet
 Comment = get_comment_model()
 
 
+def get_user_groups_cached(user, request):
+    """
+    Get user groups with request-level caching.
+    IMPROVED: Uses request cache instead of modifying user object.
+    """
+    if not user.is_authenticated:
+        return set()
+    
+    # Use request as cache storage (thread-safe, request-scoped)
+    cache_key = f'_user_groups_{user.pk}'
+    
+    if not hasattr(request, '_cache'):
+        request._cache = {}
+    
+    if cache_key not in request._cache:
+        request._cache[cache_key] = set(
+            user.groups.values_list('name', flat=True)
+        )
+    
+    return request._cache[cache_key]
+
+
 class CommentViewSet(viewsets.ModelViewSet):
     """
     API endpoints for managing comments.
     Optimized with select_related, prefetch_related, and annotations.
+    IMPROVED: Now validates ordering against ALLOWED_SORTS.
     """
     serializer_class = CommentSerializer
     permission_classes = [CommentPermission]
@@ -41,10 +64,27 @@ class CommentViewSet(viewsets.ModelViewSet):
         filters.SearchFilter,
         filters.OrderingFilter
     ]
-    # FIXED: Include user__username in search fields
     search_fields = ['content', 'user_name', 'user__username', 'user__first_name', 'user__last_name']
     ordering_fields = ['created_at', 'updated_at']
     ordering = ['-created_at']
+    
+    def get_ordering(self):
+        """
+        Get ordering with validation against ALLOWED_SORTS.
+        IMPROVED: Now enforces ALLOWED_SORTS setting.
+        """
+        ordering = self.request.query_params.get('ordering', None)
+        
+        if ordering:
+            # Validate against ALLOWED_SORTS if configured
+            allowed_sorts = comments_settings.ALLOWED_SORTS
+            if allowed_sorts and ordering not in allowed_sorts:
+                # Return default ordering if invalid sort requested
+                return [comments_settings.DEFAULT_SORT]
+            return [ordering]
+        
+        # Return default
+        return [comments_settings.DEFAULT_SORT]
     
     def get_queryset(self):
         """
@@ -102,15 +142,12 @@ class CommentViewSet(viewsets.ModelViewSet):
             can_see_non_public = False
             
             if not user.is_anonymous:
-                # Cache user groups to avoid repeated queries
-                if not hasattr(user, '_cached_group_names'):
-                    user._cached_group_names = set(
-                        user.groups.values_list('name', flat=True)
-                    )
+                # Use improved caching pattern
+                user_groups = get_user_groups_cached(user, self.request)
                 
                 # Check if user is in privileged groups
                 privileged_groups = set(comments_settings.CAN_VIEW_NON_PUBLIC_COMMENTS)
-                can_see_non_public = bool(user._cached_group_names & privileged_groups)
+                can_see_non_public = bool(user_groups & privileged_groups)
             
             if not can_see_non_public:
                 if user.is_anonymous:
@@ -120,6 +157,10 @@ class CommentViewSet(viewsets.ModelViewSet):
                         models.Q(is_public=True, is_removed=False) |
                         models.Q(user=user)
                     )
+        
+        # Apply validated ordering
+        ordering = self.get_ordering()
+        queryset = queryset.order_by(*ordering)
         
         return queryset
     
@@ -221,12 +262,27 @@ class ContentObjectCommentsViewSet(mixins.ListModelMixin, viewsets.GenericViewSe
     """
     API endpoint for listing comments for a specific object.
     Optimized for performance with selective prefetching.
+    IMPROVED: Now validates ordering.
     """
     serializer_class = CommentSerializer
     permission_classes = [AllowAny]
     filter_backends = [filters.OrderingFilter]
     ordering_fields = ['created_at', 'updated_at']
     ordering = comments_settings.DEFAULT_SORT
+    
+    def get_ordering(self):
+        """
+        Get ordering with validation against ALLOWED_SORTS.
+        """
+        ordering = self.request.query_params.get('ordering', None)
+        
+        if ordering:
+            allowed_sorts = comments_settings.ALLOWED_SORTS
+            if allowed_sorts and ordering not in allowed_sorts:
+                return [comments_settings.DEFAULT_SORT]
+            return [ordering]
+        
+        return [comments_settings.DEFAULT_SORT]
     
     def get_queryset(self):
         """
@@ -290,5 +346,9 @@ class ContentObjectCommentsViewSet(mixins.ListModelMixin, viewsets.GenericViewSe
             thread_id = self.request.query_params.get('thread_id')
             if thread_id:
                 queryset = queryset.filter(thread_id=thread_id)
+        
+        # Apply validated ordering
+        ordering = self.get_ordering()
+        queryset = queryset.order_by(*ordering)
         
         return queryset

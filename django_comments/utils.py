@@ -159,34 +159,50 @@ def get_object_from_content_type_and_id(content_type_str: str, obj_id: Union[str
         return None
 
 
-def is_comment_content_allowed(content: str) -> bool:
+def check_content_for_spam(content: str) -> bool:
     """
-    Check if comment content is allowed (not spam, not profane, etc.)
+    Check if content contains spam words.
+    
+    Returns:
+        True if spam detected, False otherwise
     """
-    if not content or len(content) > comments_settings.MAX_COMMENT_LENGTH:
+    if not comments_settings.SPAM_DETECTION_ENABLED or not comments_settings.SPAM_WORDS:
         return False
-
+    
     content_lower = content.lower()
+    for word in comments_settings.SPAM_WORDS:
+        if word.lower() in content_lower:
+            logger.info(f"Spam detected: content contains '{word}'")
+            return True
+    
+    return False
 
-    # Spam detection
-    if comments_settings.SPAM_DETECTION_ENABLED and comments_settings.SPAM_WORDS:
-        for word in comments_settings.SPAM_WORDS:
-            if word.lower() in content_lower:
-                return False
 
-    # Profanity filtering
-    if comments_settings.PROFANITY_FILTERING and comments_settings.PROFANITY_LIST:
-        for word in comments_settings.PROFANITY_LIST:
-            if word.lower() in content_lower:
-                if comments_settings.PROFANITY_ACTION in ['hide', 'delete']:
-                    return False
-
-    return True
+def check_content_for_profanity(content: str) -> bool:
+    """
+    Check if content contains profanity.
+    
+    Returns:
+        True if profanity detected, False otherwise
+    """
+    if not comments_settings.PROFANITY_FILTERING or not comments_settings.PROFANITY_LIST:
+        return False
+    
+    content_lower = content.lower()
+    for word in comments_settings.PROFANITY_LIST:
+        # Use word boundary to match whole words only
+        pattern = r'\b' + re.escape(word.lower()) + r'\b'
+        if re.search(pattern, content_lower):
+            logger.info(f"Profanity detected: content contains '{word}'")
+            return True
+    
+    return False
 
 
 def filter_profanity(content: str) -> str:
     """
     Filter profanity from comment content by replacing words with asterisks.
+    Only censors if PROFANITY_ACTION is 'censor'.
     """
     if (not comments_settings.PROFANITY_FILTERING or
         not comments_settings.PROFANITY_LIST or
@@ -200,6 +216,138 @@ def filter_profanity(content: str) -> str:
         result = re.sub(pattern, replacement, result, flags=re.IGNORECASE)
 
     return result
+
+
+def is_comment_content_allowed(content: str) -> tuple[bool, Optional[str]]:
+    """
+    Check if comment content is allowed (not spam, not profane, etc.)
+    
+    Returns:
+        tuple: (is_allowed: bool, reason: Optional[str])
+               reason is only provided if content is not allowed
+    """
+    if not content or len(content) > comments_settings.MAX_COMMENT_LENGTH:
+        return False, "Content is empty or exceeds maximum length"
+
+    # Check for spam
+    if comments_settings.SPAM_DETECTION_ENABLED:
+        is_spam = check_content_for_spam(content)
+        if is_spam:
+            action = comments_settings.SPAM_ACTION
+            if action in ['hide', 'delete']:
+                return False, f"Content flagged as spam (action: {action})"
+            # If action is 'flag', we allow it but mark for flagging
+
+    # Check for profanity
+    if comments_settings.PROFANITY_FILTERING:
+        has_profanity = check_content_for_profanity(content)
+        if has_profanity:
+            action = comments_settings.PROFANITY_ACTION
+            if action in ['hide', 'delete']:
+                return False, f"Content contains profanity (action: {action})"
+            # If action is 'censor' or 'flag', we allow it (will be processed later)
+
+    return True, None
+
+
+def process_comment_content(content: str) -> tuple[str, dict]:
+    """
+    Process comment content for spam and profanity.
+    
+    This is called during comment creation to:
+    1. Filter profanity (if action is 'censor')
+    2. Determine flags to apply (if action is 'flag')
+    
+    Returns:
+        tuple: (processed_content: str, flags_to_apply: dict)
+               flags_to_apply contains metadata about detected issues
+    """
+    processed_content = content
+    flags_to_apply = {
+        'is_spam': False,
+        'has_profanity': False,
+        'auto_flag_spam': False,
+        'auto_flag_profanity': False,
+    }
+    
+    # Check spam
+    if comments_settings.SPAM_DETECTION_ENABLED:
+        is_spam = check_content_for_spam(content)
+        if is_spam:
+            flags_to_apply['is_spam'] = True
+            if comments_settings.SPAM_ACTION == 'flag':
+                flags_to_apply['auto_flag_spam'] = True
+                logger.info("Content will be auto-flagged as spam")
+    
+    # Check and process profanity
+    if comments_settings.PROFANITY_FILTERING:
+        has_profanity = check_content_for_profanity(content)
+        if has_profanity:
+            flags_to_apply['has_profanity'] = True
+            
+            action = comments_settings.PROFANITY_ACTION
+            if action == 'censor':
+                processed_content = filter_profanity(content)
+                logger.info("Profanity censored in content")
+            elif action == 'flag':
+                flags_to_apply['auto_flag_profanity'] = True
+                logger.info("Content will be auto-flagged for profanity")
+    
+    return processed_content, flags_to_apply
+
+
+def apply_automatic_flags(comment):
+    """
+    Apply automatic flags to a comment based on content analysis.
+    
+    This should be called after comment creation if flags_to_apply
+    indicates auto-flagging is needed.
+    
+    Args:
+        comment: Comment instance
+        flags_to_apply: Dict from process_comment_content()
+    """
+    from .models import CommentFlag
+    from django.contrib.auth import get_user_model
+    
+    # Get system user for automatic flags (create if doesn't exist)
+    User = get_user_model()
+    system_user, _ = User.objects.get_or_create(
+        username='system',
+        defaults={
+            'email': 'system@django-comments.local',
+            'is_active': False,  # System user should not be able to login
+        }
+    )
+    
+    # Get content analysis
+    _, flags_to_apply = process_comment_content(comment.content)
+    
+    # Apply spam flag if needed
+    if flags_to_apply.get('auto_flag_spam'):
+        try:
+            CommentFlag.objects.create_or_get_flag(
+                comment=comment,
+                user=system_user,
+                flag='spam',
+                reason='Automatically flagged by spam detection system'
+            )
+            logger.info(f"Auto-flagged comment {comment.pk} as spam")
+        except Exception as e:
+            logger.error(f"Failed to auto-flag comment as spam: {e}")
+    
+    # Apply profanity flag if needed
+    if flags_to_apply.get('auto_flag_profanity'):
+        try:
+            CommentFlag.objects.create_or_get_flag(
+                comment=comment,
+                user=system_user,
+                flag='offensive',
+                reason='Automatically flagged for profanity'
+            )
+            logger.info(f"Auto-flagged comment {comment.pk} for profanity")
+        except Exception as e:
+            logger.error(f"Failed to auto-flag comment for profanity: {e}")
 
 
 def get_comment_context(obj: models.Model) -> Dict[str, Any]:
