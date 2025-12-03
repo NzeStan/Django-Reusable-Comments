@@ -2,13 +2,13 @@ import re
 import logging
 import importlib
 from typing import List, Dict, Any, Type, Union, Optional
-
 from django.apps import apps
 from django.contrib.contenttypes.models import ContentType
 from django.core.exceptions import ImproperlyConfigured, ObjectDoesNotExist
 from django.db import models
-
 from .conf import comments_settings
+from django.conf import settings
+from django.core.exceptions import ImproperlyConfigured
 
 logger = logging.getLogger(comments_settings.LOGGER_NAME)
 
@@ -16,35 +16,37 @@ logger = logging.getLogger(comments_settings.LOGGER_NAME)
 def get_comment_model():
     """
     Return the Comment model that is active in this project.
-    Supports both 'app_label.ModelName' and 'module.path.ModelClass' formats.
+    
+    This checks the DJANGO_COMMENTS_COMMENT_MODEL setting, which is
+    automatically set by AppConfig.ready() based on USE_UUIDS.
+    
+    Returns either Comment or UUIDComment.
     """
-    model_path = get_comment_model_path()
-
-    # Try app_label.ModelName format
+    model_string = getattr(
+        settings,
+        'DJANGO_COMMENTS_COMMENT_MODEL',
+        'django_comments.Comment'  # Default fallback
+    )
+    
     try:
-        return apps.get_model(model_path)
-    except (ValueError, LookupError):
-        pass  # fallback to dotted import path
-
-    # Try module.path.ModelClass format
-    try:
-        module_path, class_name = model_path.rsplit('.', 1)
-        module = importlib.import_module(module_path)
-        model = getattr(module, class_name)
-        return model
-    except (ImportError, AttributeError, ValueError) as e:
+        return apps.get_model(model_string, require_ready=False)
+    except (ValueError, LookupError) as e:
         raise ImproperlyConfigured(
-            f"Could not load comment model '{model_path}'. "
-            "Check your DJANGO_COMMENTS_CONFIG['COMMENT_MODEL'] setting. "
-            "Use 'app_label.ModelName' or full dotted path like 'myapp.models.MyModel'."
+            f"Could not load comment model '{model_string}'. "
+            "Check your DJANGO_COMMENTS_CONFIG['USE_UUIDS'] setting."
         ) from e
 
 
 def get_comment_model_path() -> str:
     """
-    Return the path to the comment model from settings.
+    Return the path to the comment model.
+    Used for ForeignKey string references.
     """
-    return comments_settings.COMMENT_MODEL
+    return getattr(
+        settings,
+        'DJANGO_COMMENTS_COMMENT_MODEL',
+        'django_comments.Comment'
+    )
 
 
 def get_commentable_models() -> List[Type[models.Model]]:

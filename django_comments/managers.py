@@ -260,3 +260,121 @@ class CommentManager(models.Manager):
         return self.filter(
             thread_id=thread_id
         ).with_full_thread().order_by('path')
+    
+
+class CommentFlagManager(models.Manager):
+    """
+    Enhanced manager for CommentFlag with safe operations.
+    """
+    
+    def create_or_get_flag(self, comment, user, flag, reason=''):
+        """
+        Create a flag or return existing one.
+        Prevents duplicate flags and handles both Comment types.
+        
+        Args:
+            comment: Comment or UUIDComment instance
+            user: User who is flagging
+            flag: Flag type ('spam', 'offensive', etc.)
+            reason: Optional reason text
+        
+        Returns:
+            tuple: (CommentFlag instance, created bool)
+        
+        Example:
+            flag, created = CommentFlag.objects.create_or_get_flag(
+                comment=my_comment,
+                user=request.user,
+                flag='spam',
+                reason='This is clearly spam'
+            )
+        """
+        # Get ContentType for the comment (works with both Comment types)
+        comment_ct = ContentType.objects.get_for_model(comment)
+        
+        # Convert PK to string (works for int and UUID)
+        comment_id_str = str(comment.pk)
+        
+        # Try to get or create
+        flag_obj, created = self.get_or_create(
+            comment_type=comment_ct,
+            comment_id=comment_id_str,
+            user=user,
+            flag=flag,
+            defaults={'reason': reason}
+        )
+        
+        # If not created and reason is different, update it
+        if not created and reason and flag_obj.reason != reason:
+            flag_obj.reason = reason
+            flag_obj.save(update_fields=['reason', 'updated_at'])
+        
+        return flag_obj, created
+    
+    def get_flags_for_comment(self, comment):
+        """
+        Get all flags for a specific comment.
+        Works with both Comment and UUIDComment.
+        
+        Args:
+            comment: Comment or UUIDComment instance
+        
+        Returns:
+            QuerySet of CommentFlag instances
+        
+        Example:
+            flags = CommentFlag.objects.get_flags_for_comment(my_comment)
+            for flag in flags:
+                print(f"{flag.user} flagged as {flag.flag}")
+        """
+        comment_ct = ContentType.objects.get_for_model(comment)
+        return self.filter(
+            comment_type=comment_ct,
+            comment_id=str(comment.pk)
+        ).select_related('user')
+    
+    def get_flags_by_user(self, user, flag_type=None):
+        """
+        Get all flags created by a specific user.
+        
+        Args:
+            user: User instance
+            flag_type: Optional flag type to filter by
+        
+        Returns:
+            QuerySet of CommentFlag instances
+        """
+        queryset = self.filter(user=user).select_related(
+            'user',
+            'comment_type'
+        )
+        
+        if flag_type:
+            queryset = queryset.filter(flag=flag_type)
+        
+        return queryset
+    
+    def get_spam_flags(self):
+        """Get all spam flags."""
+        return self.filter(flag='spam').select_related('user', 'comment_type')
+    
+    def get_comments_with_multiple_flags(self, min_flags=2):
+        """
+        Get comments that have been flagged multiple times.
+        Returns queryset with flag count annotation.
+        
+        Args:
+            min_flags: Minimum number of flags to filter by
+        
+        Returns:
+            QuerySet with flag_count annotation
+        """
+        from django.db.models import Count
+        
+        return self.values(
+            'comment_type', 'comment_id'
+        ).annotate(
+            flag_count=Count('id')
+        ).filter(
+            flag_count__gte=min_flags
+        ).order_by('-flag_count')

@@ -43,20 +43,40 @@ def on_comment_post_delete(sender, instance, **kwargs):
     safe_send(comment_post_delete, sender=sender, comment=instance, **kwargs)
 
 
-# Moderation utilities
 def flag_comment(comment, user, flag='other', reason=''):
     """
     Flag a comment and send a signal.
+    
+    Args:
+        comment: Comment or UUIDComment instance
+        user: User who is flagging
+        flag: Flag type (default: 'other')
+        reason: Optional reason
+    
+    Returns:
+        CommentFlag instance
+    
+    Example:
+        from django_comments.signals import flag_comment
+        
+        flag = flag_comment(
+            comment=my_comment,
+            user=request.user,
+            flag='spam',
+            reason='This is clearly spam'
+        )
     """
     from .models import CommentFlag
-
-    comment_flag, created = CommentFlag.objects.get_or_create(
+    
+    # Use manager method for safe creation
+    comment_flag, created = CommentFlag.objects.create_or_get_flag(
         comment=comment,
         user=user,
         flag=flag,
-        defaults={'reason': reason}
+        reason=reason
     )
-
+    
+    # Send signal only if newly created
     if created:
         safe_send(
             comment_flagged,
@@ -67,8 +87,9 @@ def flag_comment(comment, user, flag='other', reason=''):
             flag_type=flag,
             reason=reason
         )
-
+    
     return comment_flag
+
 
 
 def approve_comment(comment, moderator=None):

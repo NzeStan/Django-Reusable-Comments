@@ -105,15 +105,20 @@ class RecursiveCommentSerializer(serializers.Serializer):
 class CommentSerializer(serializers.ModelSerializer):
     """
     Serializer for comments with support for nested comments.
+    
     OPTIMIZED: Uses annotated fields instead of causing extra queries.
+    FIXED: Handles integer object_id values properly.
+    FIXED: Prevents updating immutable fields (content_type, object_id).
     """
 
     content_type = serializers.CharField(
         write_only=True,
+        required=False,  # Not required for updates
         help_text=_("Content type in the format 'app_label.model_name'")
     )
     object_id = serializers.CharField(
         write_only=True,
+        required=False,  # Not required for updates
         help_text=_("ID of the object to comment on")
     )
     content_object_info = serializers.SerializerMethodField()
@@ -186,7 +191,6 @@ class CommentSerializer(serializers.ModelSerializer):
         # Check thread depth limits
         max_depth = comments_settings.MAX_COMMENT_DEPTH
         if max_depth is not None and value.depth >= max_depth:
-            # FIXED: Raise serializers.ValidationError instead of custom exception
             raise serializers.ValidationError(
                 _("Maximum thread depth of {max_depth} exceeded.").format(max_depth=max_depth)
             )
@@ -207,7 +211,6 @@ class CommentSerializer(serializers.ModelSerializer):
         
         # Then check other content restrictions
         if not is_comment_content_allowed(value):
-            # FIXED: Raise serializers.ValidationError instead of custom exception
             raise serializers.ValidationError(
                 _("Comment content is not allowed (may contain spam or profanity)")
             )
@@ -218,14 +221,22 @@ class CommentSerializer(serializers.ModelSerializer):
     def validate_object_id(self, value):
         """
         Validate object_id format if needed.
+        FIXED: Handles both string and integer inputs.
         """
+        # Convert to string if it's an integer
+        if isinstance(value, int):
+            value = str(value)
+        
         # If you want to ensure it's a valid UUID when USE_UUIDS is True
         if comments_settings.USE_UUIDS:
             import uuid
             try:
-                uuid.UUID(value)  # Just validate, don't convert
-            except ValueError:
-                raise serializers.ValidationError("Invalid UUID format")
+                # Now value is guaranteed to be a string
+                uuid.UUID(value)
+            except (ValueError, AttributeError) as e:
+                raise serializers.ValidationError(
+                    f"Invalid UUID format: {str(e)}"
+                )
         return value
     
     def validate_content_type(self, value):
@@ -308,13 +319,14 @@ class CommentSerializer(serializers.ModelSerializer):
         """
         Get information about the commented object.
         OPTIMIZED: content_type is already prefetched.
+        FIXED: Always return object_id as string.
         """
         if not obj.content_object:
             return None
             
         return {
             'content_type': f"{obj.content_type.app_label}.{obj.content_type.model}",
-            'object_id': obj.object_id,
+            'object_id': str(obj.object_id),  # Always convert to string
             'object_repr': str(obj.content_object),
         }
     
@@ -351,3 +363,24 @@ class CommentSerializer(serializers.ModelSerializer):
         )
         
         return comment
+    
+    def update(self, instance, validated_data):
+        """
+        Update a comment.
+        
+        IMPORTANT: The following fields are immutable and cannot be changed:
+        - content_type: The type of object being commented on
+        - object_id: The ID of the object being commented on
+        - parent: The parent comment (for threading structure)
+        - thread_id: The thread identifier
+        - path: The materialized path for tree structure
+        
+        These fields are removed from validated_data to prevent errors.
+        """
+        # Remove immutable fields that should never be updated
+        immutable_fields = ['content_type', 'object_id', 'parent', 'thread_id', 'path']
+        for field in immutable_fields:
+            validated_data.pop(field, None)
+        
+        # Use the default update behavior for remaining fields
+        return super().update(instance, validated_data)
