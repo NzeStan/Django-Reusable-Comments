@@ -1,14 +1,13 @@
 import re
 import logging
 import importlib
-from typing import List, Dict, Any, Type, Union, Optional
+from typing import List, Dict, Any, Type, Union, Optional, Tuple
 from django.apps import apps
 from django.contrib.contenttypes.models import ContentType
 from django.core.exceptions import ImproperlyConfigured, ObjectDoesNotExist
 from django.db import models
 from .conf import comments_settings
 from django.conf import settings
-from django.core.exceptions import ImproperlyConfigured
 
 logger = logging.getLogger(comments_settings.LOGGER_NAME)
 
@@ -53,8 +52,6 @@ def get_commentable_models() -> List[Type[models.Model]]:
     """
     Return a list of model classes that can be commented on.
     Accepts either 'app_label.ModelName' or 'module.path.ModelClass'.
-    
-    IMPROVED: Better error handling and multiple lookup strategies.
     """
     model_paths = comments_settings.COMMENTABLE_MODELS
 
@@ -79,64 +76,55 @@ def get_commentable_models() -> List[Type[models.Model]]:
         # Strategy 2: Try with different case variations
         if '.' in model_path:
             app_label, model_name = model_path.split('.', 1)
-            # Try lowercase model name
             try:
                 model = apps.get_model(app_label, model_name.lower())
                 if model:
                     models_list.append(model)
-                    logger.debug(f"Loaded model '{model_path}' with lowercase: {app_label}.{model_name.lower()}")
+                    logger.debug(f"Loaded model '{model_path}' with lowercase")
                     continue
-            except (ValueError, LookupError) as e:
-                logger.debug(f"Lowercase attempt failed for '{model_path}': {e}")
+            except (ValueError, LookupError):
+                pass
             
-            # Try original case
             try:
                 model = apps.get_model(app_label, model_name)
                 if model:
                     models_list.append(model)
-                    logger.debug(f"Loaded model '{model_path}' with original case: {app_label}.{model_name}")
+                    logger.debug(f"Loaded model '{model_path}' with original case")
                     continue
-            except (ValueError, LookupError) as e:
-                logger.debug(f"Original case attempt failed for '{model_path}': {e}")
+            except (ValueError, LookupError):
+                pass
 
         # Strategy 3: Try module.path.ModelClass format
         try:
-            if model_path.count('.') >= 2:  # Has at least module.submodule.Class
+            if model_path.count('.') >= 2:
                 module_path, class_name = model_path.rsplit('.', 1)
                 module = importlib.import_module(module_path)
                 model = getattr(module, class_name)
                 if model and issubclass(model, models.Model):
                     models_list.append(model)
-                    logger.debug(f"Loaded model '{model_path}' via import: {module_path}.{class_name}")
+                    logger.debug(f"Loaded model '{model_path}' via import")
                     continue
-        except (ImportError, AttributeError, ValueError, TypeError) as e:
-            logger.debug(f"Import attempt failed for '{model_path}': {e}")
+        except (ImportError, AttributeError, ValueError, TypeError):
+            pass
         
-        # If we got here, all strategies failed
-        logger.error(f"Could not load model '{model_path}' using any strategy. "
-                    f"Available apps: {list(apps.app_configs.keys())}")
+        logger.error(f"Could not load model '{model_path}'")
 
     if not models_list:
         logger.warning(f"No models could be loaded from COMMENTABLE_MODELS: {model_paths}")
     else:
-        logger.info(f"Successfully loaded {len(models_list)} commentable models: "
-                   f"{[m._meta.label for m in models_list]}")
+        logger.info(f"Successfully loaded {len(models_list)} commentable models")
 
     return models_list
 
 
 def get_commentable_content_types() -> List[ContentType]:
-    """
-    Return a list of content types for commentable models.
-    """
+    """Return a list of content types for commentable models."""
     models_list = get_commentable_models()
     return [ContentType.objects.get_for_model(model) for model in models_list]
 
 
 def get_model_from_content_type_string(content_type_str: str) -> Optional[Type[models.Model]]:
-    """
-    Convert a string like 'app_label.ModelName' to a model class.
-    """
+    """Convert a string like 'app_label.ModelName' to a model class."""
     try:
         return apps.get_model(content_type_str)
     except (ValueError, LookupError) as e:
@@ -145,9 +133,7 @@ def get_model_from_content_type_string(content_type_str: str) -> Optional[Type[m
 
 
 def get_object_from_content_type_and_id(content_type_str: str, obj_id: Union[str, int]) -> Optional[models.Model]:
-    """
-    Get a model instance from a content type string and object ID.
-    """
+    """Get a model instance from a content type string and object ID."""
     model = get_model_from_content_type_string(content_type_str)
     if not model:
         return None
@@ -159,23 +145,46 @@ def get_object_from_content_type_and_id(content_type_str: str, obj_id: Union[str
         return None
 
 
-def check_content_for_spam(content: str) -> bool:
+def check_content_for_spam(content: str) -> Tuple[bool, Optional[str]]:
     """
-    Check if content contains spam words.
+    Check if content contains spam.
     
     Returns:
-        True if spam detected, False otherwise
+        Tuple of (is_spam: bool, reason: Optional[str])
     """
-    if not comments_settings.SPAM_DETECTION_ENABLED or not comments_settings.SPAM_WORDS:
-        return False
+    if not comments_settings.SPAM_DETECTION_ENABLED:
+        return False, None
+    
+    # Try custom spam detector first
+    custom_detector = comments_settings.SPAM_DETECTOR
+    if custom_detector:
+        try:
+            result = custom_detector(content)
+            # Handle different return formats
+            if isinstance(result, tuple):
+                is_spam, reason = result
+                if is_spam:
+                    logger.info(f"Custom spam detector flagged content: {reason}")
+                return is_spam, reason
+            elif isinstance(result, bool):
+                if result:
+                    logger.info("Custom spam detector flagged content")
+                return result, "Detected by custom spam detector" if result else None
+        except Exception as e:
+            logger.error(f"Custom spam detector failed: {e}")
+            # Fall through to default detection
+    
+    # Default spam word detection
+    if not comments_settings.SPAM_WORDS:
+        return False, None
     
     content_lower = content.lower()
     for word in comments_settings.SPAM_WORDS:
         if word.lower() in content_lower:
             logger.info(f"Spam detected: content contains '{word}'")
-            return True
+            return True, f"Contains spam keyword: {word}"
     
-    return False
+    return False, None
 
 
 def check_content_for_profanity(content: str) -> bool:
@@ -231,11 +240,11 @@ def is_comment_content_allowed(content: str) -> tuple[bool, Optional[str]]:
 
     # Check for spam
     if comments_settings.SPAM_DETECTION_ENABLED:
-        is_spam = check_content_for_spam(content)
+        is_spam, spam_reason = check_content_for_spam(content)
         if is_spam:
             action = comments_settings.SPAM_ACTION
             if action in ['hide', 'delete']:
-                return False, f"Content flagged as spam (action: {action})"
+                return False, f"Content flagged as spam: {spam_reason}"
             # If action is 'flag', we allow it but mark for flagging
 
     # Check for profanity
@@ -244,7 +253,7 @@ def is_comment_content_allowed(content: str) -> tuple[bool, Optional[str]]:
         if has_profanity:
             action = comments_settings.PROFANITY_ACTION
             if action in ['hide', 'delete']:
-                return False, f"Content contains profanity (action: {action})"
+                return False, f"Content contains profanity"
             # If action is 'censor' or 'flag', we allow it (will be processed later)
 
     return True, None
@@ -268,16 +277,18 @@ def process_comment_content(content: str) -> tuple[str, dict]:
         'has_profanity': False,
         'auto_flag_spam': False,
         'auto_flag_profanity': False,
+        'spam_reason': None,
     }
     
     # Check spam
     if comments_settings.SPAM_DETECTION_ENABLED:
-        is_spam = check_content_for_spam(content)
+        is_spam, spam_reason = check_content_for_spam(content)
         if is_spam:
             flags_to_apply['is_spam'] = True
+            flags_to_apply['spam_reason'] = spam_reason
             if comments_settings.SPAM_ACTION == 'flag':
                 flags_to_apply['auto_flag_spam'] = True
-                logger.info("Content will be auto-flagged as spam")
+                logger.info(f"Content will be auto-flagged as spam: {spam_reason}")
     
     # Check and process profanity
     if comments_settings.PROFANITY_FILTERING:
@@ -300,23 +311,19 @@ def apply_automatic_flags(comment):
     """
     Apply automatic flags to a comment based on content analysis.
     
-    This should be called after comment creation if flags_to_apply
-    indicates auto-flagging is needed.
-    
     Args:
         comment: Comment instance
-        flags_to_apply: Dict from process_comment_content()
     """
     from .models import CommentFlag
     from django.contrib.auth import get_user_model
     
-    # Get system user for automatic flags (create if doesn't exist)
+    # Get system user for automatic flags
     User = get_user_model()
     system_user, _ = User.objects.get_or_create(
         username='system',
         defaults={
             'email': 'system@django-comments.local',
-            'is_active': False,  # System user should not be able to login
+            'is_active': False,
         }
     )
     
@@ -326,11 +333,12 @@ def apply_automatic_flags(comment):
     # Apply spam flag if needed
     if flags_to_apply.get('auto_flag_spam'):
         try:
+            reason = flags_to_apply.get('spam_reason') or 'Automatically flagged by spam detection system'
             CommentFlag.objects.create_or_get_flag(
                 comment=comment,
                 user=system_user,
                 flag='spam',
-                reason='Automatically flagged by spam detection system'
+                reason=reason
             )
             logger.info(f"Auto-flagged comment {comment.pk} as spam")
         except Exception as e:
@@ -351,9 +359,7 @@ def apply_automatic_flags(comment):
 
 
 def get_comment_context(obj: models.Model) -> Dict[str, Any]:
-    """
-    Get context data for rendering comments for an object.
-    """
+    """Get context data for rendering comments for an object."""
     Comment = get_comment_model()
     content_type = ContentType.objects.get_for_model(obj)
 
@@ -374,9 +380,7 @@ def get_comment_context(obj: models.Model) -> Dict[str, Any]:
 
 
 def check_comment_permissions(user, comment_or_object, action='view'):
-    """
-    Check if a user has permission to perform an action on a comment or object.
-    """
+    """Check if a user has permission to perform an action on a comment or object."""
     if user.is_anonymous:
         if action == 'view':
             if hasattr(comment_or_object, 'is_public'):

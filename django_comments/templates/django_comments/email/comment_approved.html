@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Comment Approved</title>
+</head>
+<body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; background-color: #f4f4f4;">
+    <div style="max-width: 600px; margin: 20px auto; background-color: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+        <!-- Header -->
+        <div style="background: linear-gradient(135deg, #56ab2f 0%, #a8e063 100%); padding: 30px 20px; text-align: center;">
+            <div style="font-size: 48px; margin-bottom: 10px;">✓</div>
+            <h1 style="color: #ffffff; margin: 0; font-size: 24px; font-weight: 600;">
+                Your Comment Was Approved!
+            </h1>
+        </div>
+        
+        <!-- Content -->
+        <div style="padding: 30px 20px;">
+            <p style="font-size: 16px; margin-bottom: 20px; text-align: center;">
+                Great news! Your comment on <strong>{{ content_object }}</strong> has been approved and is now visible to everyone.
+            </p>
+            
+            <!-- Success Message -->
+            <div style="background: #e8f5e9; padding: 20px; border-radius: 8px; margin: 25px 0; text-align: center;">
+                <div style="font-size: 36px; margin-bottom: 10px;">🎉</div>
+                <p style="margin: 0; font-size: 18px; font-weight: 600; color: #2e7d32;">
+                    Your comment is now live!
+                </p>
+            </div>
+            
+            <!-- Comment Box -->
+            <div style="background: #f5f5f5; padding: 20px; border-left: 4px solid #4caf50; border-radius: 4px; margin: 25px 0;">
+                <p style="margin: 0 0 10px 0; font-size: 12px; font-weight: 600; color: #666; text-transform: uppercase; letter-spacing: 0.5px;">
+                    Your Approved Comment
+                </p>
+                <p style="margin: 0; color: #555; white-space: pre-wrap;">{{ comment.content }}</p>
+            </div>
+            
+            <!-- Button -->
+            <div style="text-align: center; margin: 30px 0 20px 0;">
+                <a href="{{ protocol }}://{{ domain }}/comments/{{ comment.pk }}/" 
+                   style="display: inline-block; background: #4caf50; color: #ffffff; padding: 12px 30px; text-decoration: none; border-radius: 5px; font-weight: 600; box-shadow: 0 2px 4px rgba(76, 175, 80, 0.4);">
+                    View Your Comment
+                </a>
+            </div>
+            
+            <!-- Thank You Message -->
+            <div style="background: #fff9e6; padding: 15px; border-radius: 4px; margin: 25px 0; text-align: center;">
+                <p style="margin: 0; color: #856404;">
+                    💡 <strong>Thank you for contributing!</strong> Your insights help make our community better.
+                </p>
+            </div>
+            
+            <!-- Approval Details -->
+            <div style="margin-top: 25px; padding-top: 20px; border-top: 1px solid #e0e0e0; font-size: 13px; color: #777;">
+                <p style="margin: 5px 0;">
+                    <strong>Approved:</strong> {{ comment.updated_at|date:"F d, Y \a\t g:i A" }}
+                </p>
+                {% if moderator %}
+                <p style="margin: 5px 0;">
+                    <strong>Approved by:</strong> {{ moderator.get_full_name|default:moderator.username }}
+                </p>
+                {% endif %}
+            </div>
+        </div>
+        
+        <!-- Footer -->
+        <div style="background: #f8f9fa; padding: 20px; text-align: center; border-top: 1px solid #e0e0e0;">
+            <p style="margin: 0; font-size: 12px; color: #888;">
+                Keep the great comments coming!
+            </p>
+            <p style="margin: 10px 0 0 0; font-size: 12px; color: #888;">
+                © {{ site_name }} - All rights reserved
+            </p>
+        </div>
+    </div>
+</body>
+</html>

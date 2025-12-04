@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Comment Awaiting Moderation</title>
+</head>
+<body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; background-color: #f4f4f4;">
+    <div style="max-width: 600px; margin: 20px auto; background-color: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+        <!-- Header -->
+        <div style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); padding: 30px 20px; text-align: center;">
+            <div style="font-size: 48px; margin-bottom: 10px;">⚠️</div>
+            <h1 style="color: #ffffff; margin: 0; font-size: 24px; font-weight: 600;">
+                Comment Awaiting Moderation
+            </h1>
+        </div>
+        
+        <!-- Content -->
+        <div style="padding: 30px 20px;">
+            <p style="font-size: 16px; margin-bottom: 20px;">
+                A new comment on <strong>{{ content_object }}</strong> requires your review.
+            </p>
+            
+            <!-- Alert Box -->
+            <div style="background: #fff3cd; padding: 15px 20px; border-left: 4px solid #ff9800; border-radius: 4px; margin: 25px 0;">
+                <p style="margin: 0; color: #856404; font-weight: 600;">
+                    🔔 Action Required: Please review this comment
+                </p>
+            </div>
+            
+            <!-- Comment Author Info -->
+            <div style="background: #f8f9fa; padding: 15px 20px; border-radius: 4px; margin: 20px 0;">
+                <table style="width: 100%; border-collapse: collapse;">
+                    <tr>
+                        <td style="padding: 5px 0; font-weight: 600; color: #666; width: 100px;">From:</td>
+                        <td style="padding: 5px 0; color: #333;">{{ comment.get_user_name }}</td>
+                    </tr>
+                    {% if comment.user_email %}
+                    <tr>
+                        <td style="padding: 5px 0; font-weight: 600; color: #666;">Email:</td>
+                        <td style="padding: 5px 0; color: #333;">{{ comment.user_email }}</td>
+                    </tr>
+                    {% endif %}
+                    {% if comment.ip_address %}
+                    <tr>
+                        <td style="padding: 5px 0; font-weight: 600; color: #666;">IP:</td>
+                        <td style="padding: 5px 0; color: #333; font-family: monospace; font-size: 12px;">{{ comment.ip_address }}</td>
+                    </tr>
+                    {% endif %}
+                    <tr>
+                        <td style="padding: 5px 0; font-weight: 600; color: #666;">Posted:</td>
+                        <td style="padding: 5px 0; color: #333;">{{ comment.created_at|date:"F d, Y \a\t g:i A" }}</td>
+                    </tr>
+                </table>
+            </div>
+            
+            <!-- Comment Content -->
+            <div style="background: #fff; padding: 20px; border: 2px solid #ff9800; border-radius: 4px; margin: 25px 0;">
+                <p style="margin: 0 0 10px 0; font-size: 12px; font-weight: 600; color: #ff9800; text-transform: uppercase; letter-spacing: 0.5px;">
+                    Comment Content
+                </p>
+                <p style="margin: 0; color: #333; white-space: pre-wrap; line-height: 1.6;">{{ comment.content }}</p>
+            </div>
+            
+            <!-- Quick Stats -->
+            {% if comment.parent %}
+            <div style="background: #e8eaf6; padding: 15px 20px; border-radius: 4px; margin: 20px 0;">
+                <p style="margin: 0; color: #3f51b5; font-size: 14px;">
+                    💬 This is a <strong>reply</strong> to another comment
+                </p>
+            </div>
+            {% else %}
+            <div style="background: #e8f5e9; padding: 15px 20px; border-radius: 4px; margin: 20px 0;">
+                <p style="margin: 0; color: #2e7d32; font-size: 14px;">
+                    📝 This is a <strong>new top-level</strong> comment
+                </p>
+            </div>
+            {% endif %}
+            
+            <!-- Action Buttons -->
+            <div style="text-align: center; margin: 30px 0;">
+                <table style="margin: 0 auto;">
+                    <tr>
+                        <td style="padding: 0 5px;">
+                            <a href="{{ protocol }}://{{ domain }}/admin/django_comments/comment/{{ comment.pk }}/change/" 
+                               style="display: inline-block; background: #ff9800; color: #ffffff; padding: 12px 25px; text-decoration: none; border-radius: 5px; font-weight: 600; box-shadow: 0 2px 4px rgba(255, 152, 0, 0.4);">
+                                Review in Admin
+                            </a>
+                        </td>
+                        <td style="padding: 0 5px;">
+                            <a href="{{ protocol }}://{{ domain }}/api/comments/{{ comment.pk }}/approve/" 
+                               style="display: inline-block; background: #4caf50; color: #ffffff; padding: 12px 25px; text-decoration: none; border-radius: 5px; font-weight: 600; box-shadow: 0 2px 4px rgba(76, 175, 80, 0.4);">
+                                Quick Approve
+                            </a>
+                        </td>
+                    </tr>
+                </table>
+            </div>
+            
+            <!-- Moderation Tips -->
+            <div style="background: #e3f2fd; padding: 20px; border-radius: 4px; margin: 25px 0;">
+                <p style="margin: 0 0 10px 0; font-weight: 600; color: #1976d2;">
+                    💡 Moderation Tips
+                </p>
+                <ul style="margin: 0; padding-left: 20px; color: #555; font-size: 14px;">
+                    <li style="margin-bottom: 5px;">Check for spam keywords or suspicious links</li>
+                    <li style="margin-bottom: 5px;">Verify the comment is on-topic and respectful</li>
+                    <li style="margin-bottom: 5px;">Look for patterns if this user has commented before</li>
+                    <li>Use quick approve for trusted users, detailed review for new users</li>
+                </ul>
+            </div>
+            
+            <!-- Stats -->
+            <div style="margin-top: 25px; padding-top: 20px; border-top: 1px solid #e0e0e0; font-size: 13px; color: #777; text-align: center;">
+                <p style="margin: 0;">
+                    <strong>Moderation Queue:</strong> Check admin panel for more pending comments
+                </p>
+            </div>
+        </div>
+        
+        <!-- Footer -->
+        <div style="background: #f8f9fa; padding: 20px; text-align: center; border-top: 1px solid #e0e0e0;">
+            <p style="margin: 0; font-size: 12px; color: #888;">
+                You're receiving this as a moderator. Thanks for keeping our community safe!
+            </p>
+            <p style="margin: 10px 0 0 0; font-size: 12px; color: #888;">
+                © {{ site_name }} - All rights reserved
+            </p>
+        </div>
+    </div>
+</body>
+</html>

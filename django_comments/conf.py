@@ -1,4 +1,7 @@
 from django.conf import settings
+from django.utils.translation import gettext_lazy as _
+import warnings
+from django.core.exceptions import ImproperlyConfigured
 
 # Default settings that can be overridden by Django settings
 DEFAULTS = {
@@ -50,6 +53,12 @@ DEFAULTS = {
     # If False, only authenticated users can comment
     'ALLOW_ANONYMOUS': True,
     
+    # Comment format ('plain', 'markdown', 'html')
+    # - 'plain': Plain text with HTML escaped (safest)
+    # - 'markdown': Markdown syntax supported (requires markdown package)
+    # - 'html': HTML allowed with sanitization (requires bleach package)
+    'COMMENT_FORMAT': 'plain',
+    
     # ============================================================================
     # SORTING & DISPLAY
     # ============================================================================
@@ -66,6 +75,50 @@ DEFAULTS = {
         '-updated_at',
         'updated_at',
     ],
+    
+    # ============================================================================
+    # API PAGINATION
+    # ============================================================================
+    
+    # Number of comments per page (integrates with DRF pagination)
+    'PAGE_SIZE': 20,
+    
+    # Allow client to specify page size via query parameter
+    'PAGE_SIZE_QUERY_PARAM': 'page_size',
+    
+    # Maximum page size that can be requested
+    'MAX_PAGE_SIZE': 100,
+    
+    # ============================================================================
+    # API RATE LIMITING (integrates with DRF throttling)
+    # ============================================================================
+    
+    # Rate limit for authenticated users
+    # Format: 'number/period' (e.g., '100/day', '10/hour', '5/minute')
+    'API_RATE_LIMIT': '100/day',
+    
+    # Rate limit for anonymous users (typically lower)
+    'API_RATE_LIMIT_ANON': '20/day',
+    
+    # Burst rate limit (short-term limit to prevent rapid spam)
+    'API_RATE_LIMIT_BURST': '5/min',
+    
+    # ============================================================================
+    # NOTIFICATIONS
+    # ============================================================================
+    
+    # Enable email notifications
+    'SEND_NOTIFICATIONS': False,
+    
+    # Email subject template (can use {object} placeholder)
+    'NOTIFICATION_SUBJECT': _('New comment on {object}'),
+    
+    # Email templates for different notification types
+    'NOTIFICATION_EMAIL_TEMPLATE': 'django_comments/email/new_comment.html',
+    'NOTIFICATION_REPLY_TEMPLATE': 'django_comments/email/comment_reply.html',
+    'NOTIFICATION_APPROVED_TEMPLATE': 'django_comments/email/comment_approved.html',
+    'NOTIFICATION_REJECTED_TEMPLATE': 'django_comments/email/comment_rejected.html',
+    'NOTIFICATION_MODERATOR_TEMPLATE': 'django_comments/email/moderator_notification.html',
     
     # ============================================================================
     # CLEANUP SETTINGS
@@ -100,6 +153,11 @@ DEFAULTS = {
     #   'delete' - Reject comment completely
     'SPAM_ACTION': 'flag',
     
+    # Custom spam detector function (optional)
+    # Should be a callable that takes content string and returns (is_spam: bool, reason: str)
+    # Example: 'myapp.spam.detect_spam'
+    'SPAM_DETECTOR': None,
+    
     # ============================================================================
     # PROFANITY FILTERING
     # ============================================================================
@@ -125,6 +183,14 @@ DEFAULTS = {
     # Cache timeout in seconds (default: 1 hour)
     # Used by the built-in caching system for comment counts
     'CACHE_TIMEOUT': 3600,
+    
+    # ============================================================================
+    # DEPRECATED SETTINGS (for backward compatibility)
+    # ============================================================================
+    
+    # DEPRECATED: Use DJANGO_COMMENTS_COMMENT_MODEL setting instead
+    # This setting is kept for backward compatibility but will be removed in 1.0
+    'COMMENT_MODEL': None,
 }
 
 
@@ -145,6 +211,24 @@ class CommentsSettings:
     def __init__(self, user_settings=None, defaults=None):
         self.user_settings = user_settings or {}
         self.defaults = defaults or DEFAULTS
+        self._spam_detector_cache = None
+        
+        # Handle deprecated COMMENT_MODEL setting
+        self._handle_deprecated_settings()
+        
+    def _handle_deprecated_settings(self):
+        """Handle deprecated settings with warnings."""
+        if 'COMMENT_MODEL' in self.user_settings and self.user_settings['COMMENT_MODEL']:
+            warnings.warn(
+                "DJANGO_COMMENTS_CONFIG['COMMENT_MODEL'] is deprecated. "
+                "Use DJANGO_COMMENTS_COMMENT_MODEL setting instead. "
+                "This will be removed in version 1.0.",
+                DeprecationWarning,
+                stacklevel=2
+            )
+            # Set the new setting if not already set
+            if not hasattr(settings, 'DJANGO_COMMENTS_COMMENT_MODEL'):
+                settings.DJANGO_COMMENTS_COMMENT_MODEL = self.user_settings['COMMENT_MODEL']
         
     def __getattr__(self, attr):
         if attr not in self.defaults:
@@ -153,12 +237,55 @@ class CommentsSettings:
         # Get the setting from user settings or use the default
         value = self.user_settings.get(attr, self.defaults[attr])
         
+        # Special handling for SPAM_DETECTOR
+        if attr == 'SPAM_DETECTOR' and value:
+            return self._get_spam_detector(value)
+        
         # Convert model paths to content types if needed
         if attr == 'COMMENTABLE_MODELS':
             # Will be processed by utils.get_commentable_models() when needed
             return value
         
         return value
+    
+    def _get_spam_detector(self, detector_path):
+        """
+        Load and cache spam detector function.
+        
+        Args:
+            detector_path: Dotted path to spam detector function
+        
+        Returns:
+            Callable spam detector function
+        """
+        if self._spam_detector_cache is not None:
+            return self._spam_detector_cache
+        
+        if callable(detector_path):
+            self._spam_detector_cache = detector_path
+            return detector_path
+        
+        # Import from string path
+        try:
+            from django.utils.module_loading import import_string
+            detector = import_string(detector_path)
+            
+            if not callable(detector):
+                raise TypeError(
+                    f"SPAM_DETECTOR must be callable, got {type(detector)}"
+                )
+            
+            self._spam_detector_cache = detector
+            return detector
+            
+        except ImportError as e:
+            raise ImproperlyConfigured(
+                f"Could not import spam detector '{detector_path}': {e}"
+            )
+        except Exception as e:
+            raise ImproperlyConfigured(
+                f"Error loading spam detector '{detector_path}': {e}"
+            )
         
     @property
     def as_dict(self):
@@ -169,6 +296,69 @@ class CommentsSettings:
         for key in self.defaults.keys():
             settings_dict[key] = getattr(self, key)
         return settings_dict
+    
+    def validate(self):
+        """
+        Validate settings for common configuration errors.
+        Raises ImproperlyConfigured for invalid settings.
+        """
+        errors = []
+        
+        # Validate COMMENT_FORMAT
+        valid_formats = ['plain', 'markdown', 'html']
+        if self.COMMENT_FORMAT not in valid_formats:
+            errors.append(
+                f"COMMENT_FORMAT must be one of {valid_formats}, "
+                f"got '{self.COMMENT_FORMAT}'"
+            )
+        
+        # Validate SPAM_ACTION
+        valid_spam_actions = ['flag', 'hide', 'delete']
+        if self.SPAM_ACTION not in valid_spam_actions:
+            errors.append(
+                f"SPAM_ACTION must be one of {valid_spam_actions}, "
+                f"got '{self.SPAM_ACTION}'"
+            )
+        
+        # Validate PROFANITY_ACTION
+        valid_profanity_actions = ['censor', 'flag', 'hide', 'delete']
+        if self.PROFANITY_ACTION not in valid_profanity_actions:
+            errors.append(
+                f"PROFANITY_ACTION must be one of {valid_profanity_actions}, "
+                f"got '{self.PROFANITY_ACTION}'"
+            )
+        
+        # Validate pagination settings
+        if self.PAGE_SIZE and self.PAGE_SIZE <= 0:
+            errors.append(f"PAGE_SIZE must be positive, got {self.PAGE_SIZE}")
+        
+        if self.MAX_PAGE_SIZE and self.MAX_PAGE_SIZE < self.PAGE_SIZE:
+            errors.append(
+                f"MAX_PAGE_SIZE ({self.MAX_PAGE_SIZE}) must be >= "
+                f"PAGE_SIZE ({self.PAGE_SIZE})"
+            )
+        
+        # Validate notification templates if notifications enabled
+        if self.SEND_NOTIFICATIONS:
+            required_templates = [
+                'NOTIFICATION_EMAIL_TEMPLATE',
+                'NOTIFICATION_REPLY_TEMPLATE',
+                'NOTIFICATION_APPROVED_TEMPLATE',
+                'NOTIFICATION_REJECTED_TEMPLATE',
+                'NOTIFICATION_MODERATOR_TEMPLATE',
+            ]
+            for template_setting in required_templates:
+                if not getattr(self, template_setting):
+                    errors.append(
+                        f"{template_setting} must be set when SEND_NOTIFICATIONS is True"
+                    )
+        
+        if errors:
+            from django.core.exceptions import ImproperlyConfigured
+            raise ImproperlyConfigured(
+                "Invalid django-comments configuration:\n" +
+                "\n".join(f"  - {error}" for error in errors)
+            )
 
 
 # Load user settings from Django settings

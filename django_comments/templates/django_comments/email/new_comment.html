@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>New Comment</title>
+</head>
+<body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; background-color: #f4f4f4;">
+    <div style="max-width: 600px; margin: 20px auto; background-color: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+        <!-- Header -->
+        <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 30px 20px; text-align: center;">
+            <h1 style="color: #ffffff; margin: 0; font-size: 24px; font-weight: 600;">
+                New Comment on {{ site_name }}
+            </h1>
+        </div>
+        
+        <!-- Content -->
+        <div style="padding: 30px 20px;">
+            <p style="font-size: 16px; margin-bottom: 20px;">
+                A new comment was posted on: <strong>{{ content_object }}</strong>
+            </p>
+            
+            <!-- Comment Box -->
+            <div style="background: #f8f9fa; padding: 20px; border-left: 4px solid #667eea; border-radius: 4px; margin: 25px 0;">
+                <p style="margin: 0 0 10px 0; font-weight: 600; color: #667eea;">
+                    {{ comment.get_user_name }}
+                </p>
+                <p style="margin: 0; color: #555; white-space: pre-wrap;">{{ comment.content }}</p>
+            </div>
+            
+            <!-- Button -->
+            <div style="text-align: center; margin: 30px 0 20px 0;">
+                <a href="{{ protocol }}://{{ domain }}/comments/{{ comment.pk }}/" 
+                   style="display: inline-block; background: #667eea; color: #ffffff; padding: 12px 30px; text-decoration: none; border-radius: 5px; font-weight: 600; box-shadow: 0 2px 4px rgba(102, 126, 234, 0.4);">
+                    View Comment
+                </a>
+            </div>
+            
+            <!-- Comment Details -->
+            <div style="margin-top: 25px; padding-top: 20px; border-top: 1px solid #e0e0e0; font-size: 13px; color: #777;">
+                <p style="margin: 5px 0;">
+                    <strong>Posted:</strong> {{ comment.created_at|date:"F d, Y \a\t g:i A" }}
+                </p>
+                {% if comment.user_email %}
+                <p style="margin: 5px 0;">
+                    <strong>Email:</strong> {{ comment.user_email }}
+                </p>
+                {% endif %}
+            </div>
+        </div>
+        
+        <!-- Footer -->
+        <div style="background: #f8f9fa; padding: 20px; text-align: center; border-top: 1px solid #e0e0e0;">
+            <p style="margin: 0; font-size: 12px; color: #888;">
+                You're receiving this because you're subscribed to comments on this content.
+            </p>
+            <p style="margin: 10px 0 0 0; font-size: 12px; color: #888;">
+                © {{ site_name }} - All rights reserved
+            </p>
+        </div>
+    </div>
+</body>
+</html>
