@@ -15,6 +15,7 @@ from ..utils import (
     get_comment_model,
     get_model_from_content_type_string,
 )
+from ..drf_integration import get_comment_pagination_class
 from .serializers import (
     CommentSerializer, 
     CommentFlagSerializer,
@@ -59,6 +60,7 @@ class CommentViewSet(viewsets.ModelViewSet):
     serializer_class = CommentSerializer
     permission_classes = [CommentPermission]
     filterset_class = CommentFilterSet
+    pagination_class = get_comment_pagination_class()
     filter_backends = [
         DjangoFilterBackend, 
         filters.SearchFilter,
@@ -164,6 +166,27 @@ class CommentViewSet(viewsets.ModelViewSet):
         
         return queryset
     
+    def create(self, request, *args, **kwargs):
+        """
+        Create a new comment, handling moderation exceptions.
+        """
+        try:
+            return super().create(request, *args, **kwargs)
+        except CommentModerated as e:
+            # Comment was created but requires moderation
+            # Return 201 with the comment data and moderation message
+            serializer = self.get_serializer(e.comment)
+            headers = self.get_success_headers(serializer.data)
+            return Response(
+                {
+                    'detail': str(e.message),
+                    'comment': serializer.data,
+                    'requires_moderation': True
+                },
+                status=status.HTTP_201_CREATED,
+                headers=headers
+            )
+    
     def perform_create(self, serializer):
         """
         Create a new comment, handling moderation if needed.
@@ -266,7 +289,10 @@ class ContentObjectCommentsViewSet(mixins.ListModelMixin, viewsets.GenericViewSe
     """
     serializer_class = CommentSerializer
     permission_classes = [AllowAny]
-    filter_backends = [filters.OrderingFilter]
+    pagination_class = get_comment_pagination_class()
+    filter_backends = [filters.OrderingFilter, 
+                       filters.SearchFilter,]
+    search_fields = ['content', 'user_name', 'user__username', 'user__first_name', 'user__last_name']
     ordering_fields = ['created_at', 'updated_at']
     ordering = comments_settings.DEFAULT_SORT
     
