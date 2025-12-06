@@ -1,5 +1,5 @@
 from django.conf import settings
-from django.contrib.contenttypes.fields import GenericForeignKey
+from django.contrib.contenttypes.fields import GenericForeignKey, GenericRelation
 from django.contrib.contenttypes.models import ContentType
 from django.core.exceptions import ValidationError
 from django.db import models, transaction
@@ -277,6 +277,13 @@ class Comment(AbstractCommentBase, BaseCommentMixin):
         related_name='children'
     )
     
+    flags = GenericRelation(
+        'CommentFlag',
+        content_type_field='comment_type',
+        object_id_field='comment_id',
+        related_query_name='comment'
+    )
+
     objects = CommentManager.from_queryset(CommentQuerySet)()
     
     class Meta:
@@ -315,6 +322,13 @@ class UUIDComment(AbstractCommentBase, BaseCommentMixin):
         related_name='children'
     )
     
+    flags = GenericRelation(
+        'CommentFlag',
+        content_type_field='comment_type',
+        object_id_field='comment_id',
+        related_query_name='uuidcomment'
+    )
+
     objects = CommentManager.from_queryset(CommentQuerySet)()
     
     class Meta:

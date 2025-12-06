@@ -40,8 +40,8 @@ class CommentFilterSet(django_filters.FilterSet):
         help_text=_("Filter by object ID")
     )
     
-    # User filtering
-    user = django_filters.NumberFilter(
+    # User filtering - CHANGED THIS
+    user = django_filters.CharFilter(  # ← Changed from NumberFilter
         help_text=_("Filter by user ID")
     )
     
