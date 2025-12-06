@@ -1,0 +1,131 @@
+<!-- django_comments/templates/django_comments/email/moderator_flag_notification.html -->
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Comment Flagged</title>
+</head>
+<body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; background-color: #f4f4f4;">
+    <div style="max-width: 600px; margin: 20px auto; background-color: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+        <!-- Header -->
+        <div style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); padding: 30px 20px; text-align: center;">
+            <div style="font-size: 48px; margin-bottom: 10px;">🚩</div>
+            <h1 style="color: #ffffff; margin: 0; font-size: 24px; font-weight: 600;">
+                Comment Flagged as {{ flag_type }}
+            </h1>
+        </div>
+        
+        <!-- Content -->
+        <div style="padding: 30px 20px;">
+            <p style="font-size: 16px; margin-bottom: 20px;">
+                A comment on <strong>{{ content_object }}</strong> has been flagged and requires review.
+            </p>
+            
+            <!-- Flag Alert -->
+            <div style="background: #fff3cd; padding: 15px 20px; border-left: 4px solid #ff9800; border-radius: 4px; margin: 25px 0;">
+                <p style="margin: 0; color: #856404; font-weight: 600;">
+                    🔔 Total Flags: {{ flag_count }}
+                </p>
+            </div>
+            
+            <!-- Flag Details -->
+            <div style="background: #f8f9fa; padding: 15px 20px; border-radius: 4px; margin: 20px 0;">
+                <table style="width: 100%; border-collapse: collapse;">
+                    <tr>
+                        <td style="padding: 5px 0; font-weight: 600; color: #666; width: 120px;">Flag Type:</td>
+                        <td style="padding: 5px 0; color: #333;">{{ flag_type }}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 5px 0; font-weight: 600; color: #666;">Flagged By:</td>
+                        <td style="padding: 5px 0; color: #333;">{{ flagger.get_username }}</td>
+                    </tr>
+                    {% if flag_reason %}
+                    <tr>
+                        <td style="padding: 5px 0; font-weight: 600; color: #666;">Reason:</td>
+                        <td style="padding: 5px 0; color: #333;">{{ flag_reason }}</td>
+                    </tr>
+                    {% endif %}
+                </table>
+            </div>
+            
+            <!-- Comment Author Info -->
+            <div style="background: #f8f9fa; padding: 15px 20px; border-radius: 4px; margin: 20px 0;">
+                <table style="width: 100%; border-collapse: collapse;">
+                    <tr>
+                        <td style="padding: 5px 0; font-weight: 600; color: #666; width: 120px;">Author:</td>
+                        <td style="padding: 5px 0; color: #333;">{{ comment.get_user_name }}</td>
+                    </tr>
+                    {% if comment.user_email %}
+                    <tr>
+                        <td style="padding: 5px 0; font-weight: 600; color: #666;">Email:</td>
+                        <td style="padding: 5px 0; color: #333;">{{ comment.user_email }}</td>
+                    </tr>
+                    {% endif %}
+                    {% if comment.ip_address %}
+                    <tr>
+                        <td style="padding: 5px 0; font-weight: 600; color: #666;">IP:</td>
+                        <td style="padding: 5px 0; color: #333; font-family: monospace; font-size: 12px;">{{ comment.ip_address }}</td>
+                    </tr>
+                    {% endif %}
+                    <tr>
+                        <td style="padding: 5px 0; font-weight: 600; color: #666;">Posted:</td>
+                        <td style="padding: 5px 0; color: #333;">{{ comment.created_at|date:"F d, Y \a\t g:i A" }}</td>
+                    </tr>
+                </table>
+            </div>
+            
+            <!-- Comment Content -->
+            <div style="background: #fff; padding: 20px; border: 2px solid #ff9800; border-radius: 4px; margin: 25px 0;">
+                <p style="margin: 0 0 10px 0; font-size: 12px; font-weight: 600; color: #ff9800; text-transform: uppercase; letter-spacing: 0.5px;">
+                    Flagged Comment
+                </p>
+                <p style="margin: 0; color: #333; white-space: pre-wrap; line-height: 1.6;">{{ comment.content }}</p>
+            </div>
+            
+            <!-- Action Buttons -->
+            <div style="text-align: center; margin: 30px 0;">
+                <table style="margin: 0 auto;">
+                    <tr>
+                        <td style="padding: 0 5px;">
+                            <a href="{{ protocol }}://{{ domain }}/admin/django_comments/comment/{{ comment.pk }}/change/" 
+                               style="display: inline-block; background: #ff9800; color: #ffffff; padding: 12px 25px; text-decoration: none; border-radius: 5px; font-weight: 600; box-shadow: 0 2px 4px rgba(255, 152, 0, 0.4);">
+                                Review in Admin
+                            </a>
+                        </td>
+                        <td style="padding: 0 5px;">
+                            <a href="{{ protocol }}://{{ domain }}/api/comments/{{ comment.pk }}/approve/" 
+                               style="display: inline-block; background: #4caf50; color: #ffffff; padding: 12px 25px; text-decoration: none; border-radius: 5px; font-weight: 600; box-shadow: 0 2px 4px rgba(76, 175, 80, 0.4);">
+                                Quick Approve
+                            </a>
+                        </td>
+                        <td style="padding: 0 5px;">
+                            <a href="{{ protocol }}://{{ domain }}/api/comments/{{ comment.pk }}/reject/" 
+                               style="display: inline-block; background: #f44336; color: #ffffff; padding: 12px 25px; text-decoration: none; border-radius: 5px; font-weight: 600; box-shadow: 0 2px 4px rgba(244, 67, 54, 0.4);">
+                                Reject
+                            </a>
+                        </td>
+                    </tr>
+                </table>
+            </div>
+            
+            <!-- Stats -->
+            <div style="margin-top: 25px; padding-top: 20px; border-top: 1px solid #e0e0e0; font-size: 13px; color: #777; text-align: center;">
+                <p style="margin: 0;">
+                    <strong>Total flags on this comment:</strong> {{ flag_count }}
+                </p>
+            </div>
+        </div>
+        
+        <!-- Footer -->
+        <div style="background: #f8f9fa; padding: 20px; text-align: center; border-top: 1px solid #e0e0e0;">
+            <p style="margin: 0; font-size: 12px; color: #888;">
+                You're receiving this as a moderator.
+            </p>
+            <p style="margin: 10px 0 0 0; font-size: 12px; color: #888;">
+                © {{ site_name }} - All rights reserved
+            </p>
+        </div>
+    </div>
+</body>
+</html>

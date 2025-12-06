@@ -3,7 +3,7 @@ from django.contrib.contenttypes.models import ContentType
 from django.utils.translation import gettext_lazy as _
 from rest_framework import serializers
 from ..conf import comments_settings
-from ..models import CommentFlag
+from ..models import CommentFlag, BannedUser, CommentRevision, ModerationAction
 from ..utils import (
     get_comment_model,
     get_model_from_content_type_string,
@@ -47,17 +47,30 @@ class ContentTypeSerializer(serializers.ModelSerializer):
 
 class CommentFlagSerializer(serializers.ModelSerializer):
     """
-    Serializer for comment flags.
+    Enhanced serializer for comment flags with review status.
     """
     flag_type = serializers.ChoiceField(
         source='flag',
         choices=CommentFlag.FLAG_CHOICES
     )
+    reviewed_by_info = UserSerializer(source='reviewed_by', read_only=True)
+    user_info = UserSerializer(source='user', read_only=True)
+    flag_display = serializers.CharField(source='get_flag_display', read_only=True)
+    review_action_display = serializers.CharField(source='get_review_action_display', read_only=True)
     
     class Meta:
         model = CommentFlag
-        fields = ('id', 'flag_type', 'reason', 'created_at')
-        read_only_fields = ('id', 'created_at')
+        fields = (
+            'id', 'flag_type', 'flag_display', 'reason', 'created_at',
+            'user', 'user_info',
+            'reviewed', 'reviewed_by', 'reviewed_by_info', 'reviewed_at',
+            'review_action', 'review_action_display', 'review_notes'
+        )
+        read_only_fields = (
+            'id', 'created_at', 'reviewed', 'reviewed_by', 'reviewed_at',
+            'review_action', 'flag_display', 'review_action_display'
+        )
+
 
 
 class CreateCommentFlagSerializer(serializers.ModelSerializer):
@@ -171,6 +184,8 @@ class CommentSerializer(serializers.ModelSerializer):
         default=0
     )
     is_flagged = serializers.SerializerMethodField()
+    revisions_count = serializers.SerializerMethodField()
+    moderation_actions_count = serializers.SerializerMethodField()
 
     class Meta:
         model = Comment
@@ -179,13 +194,31 @@ class CommentSerializer(serializers.ModelSerializer):
             'user', 'user_info', 'user_name', 'user_email', 'user_url',
             'parent', 'children', 'depth', 'thread_id', 'children_count',
             'created_at', 'updated_at', 'is_public', 'is_removed',
-            'flags_count', 'is_flagged',
+            'flags_count', 'is_flagged', 'revisions_count',
+            'moderation_actions_count',
         )
         read_only_fields = (
             'id', 'content_object_info', 'user_info', 'children', 'thread_id',
             'depth', 'created_at', 'updated_at', 'is_flagged', 'children_count',
+            'revisions_count', 'moderation_actions_count',
         )
 
+    def get_revisions_count(self, obj):
+        """Get count of revisions for this comment."""
+        from django.contrib.contenttypes.models import ContentType
+        return CommentRevision.objects.filter(
+            comment_type=ContentType.objects.get_for_model(obj),
+            comment_id=str(obj.pk)
+        ).count()
+    
+    def get_moderation_actions_count(self, obj):
+        """Get count of moderation actions for this comment."""
+        from django.contrib.contenttypes.models import ContentType
+        return ModerationAction.objects.filter(
+            comment_type=ContentType.objects.get_for_model(obj),
+            comment_id=str(obj.pk)
+        ).count()
+    
     def validate_parent(self, value):
         """
         Validate that the parent comment exists and is for the same object.
@@ -289,19 +322,21 @@ class CommentSerializer(serializers.ModelSerializer):
         - Enforce anonymous rules.
         - Autofill user data for authenticated users.
         - Apply moderation settings.
+        - Check bans and auto-approval.
         """
         # Skip validation for partial updates (PATCH) that don't involve user changes
         if self.partial and 'user' not in data:
             return data
-            
+
         request = self.context.get("request")
         user = data.get("user")
 
         # If explicitly passed or auto-filled by CurrentUserDefault
-        if user and not user.is_authenticated:
+        if user and not getattr(user, "is_authenticated", False):
             data["user"] = None
+            user = None  # reflect the change locally
 
-        is_anonymous = not data.get("user")
+        is_anonymous = not user
 
         if is_anonymous:
             if not comments_settings.ALLOW_ANONYMOUS:
@@ -319,16 +354,54 @@ class CommentSerializer(serializers.ModelSerializer):
 
         else:
             # Authenticated: autofill from request.user
-            user = data["user"]
             data["user_name"] = user.get_full_name() or user.get_username()
             data["user_email"] = user.email
             data["user_url"] = self.get_user_url(user)
 
-        # Only apply moderation for new comments
-        if not self.instance and comments_settings.MODERATOR_REQUIRED:
+        # -----------------------------------------
+        # 🚫 Check if user is banned
+        # -----------------------------------------
+        user_is_authenticated = bool(user and getattr(user, "is_authenticated", False))
+        if user_is_authenticated:
+            from ..utils import check_user_banned
+            is_banned, ban_info = check_user_banned(user)
+
+            if is_banned:
+                if ban_info.get("is_permanent"):
+                    raise serializers.ValidationError({
+                        "detail": _(
+                            "You are permanently banned from commenting. Reason: {reason}"
+                        ).format(reason=ban_info.get("reason", _("No reason provided")))
+                    })
+                else:
+                    banned_until = ban_info.get("banned_until")
+                    until_str = banned_until.strftime("%Y-%m-%d") if banned_until else _("an unknown date")
+
+                    raise serializers.ValidationError({
+                        "detail": _(
+                            "You are banned from commenting until {until}. Reason: {reason}"
+                        ).format(
+                            until=until_str,
+                            reason=ban_info.get("reason", _("No reason provided"))
+                        )
+                    })
+
+        # -----------------------------------------
+        # ⭐ Auto-approve certain trusted users
+        # -----------------------------------------
+        if user_is_authenticated and not self.instance:
+            from ..utils import should_auto_approve_user
+            if should_auto_approve_user(user):
+                data["is_public"] = True  # Override moderation requirement
+
+        # -----------------------------------------
+        # 🔒 Apply moderation for new comments
+        # -----------------------------------------
+        if not self.instance and comments_settings.MODERATOR_REQUIRED and "is_public" not in data:
             data["is_public"] = False
 
         return data
+
 
     def get_user_url(self, user):
         """
@@ -423,3 +496,57 @@ class CommentSerializer(serializers.ModelSerializer):
         
         # Use the default update behavior for remaining fields
         return super().update(instance, validated_data)
+    
+class BannedUserSerializer(serializers.ModelSerializer):
+    """
+    Serializer for BannedUser model.
+    """
+    user_info = UserSerializer(source='user', read_only=True)
+    banned_by_info = UserSerializer(source='banned_by', read_only=True)
+    is_active = serializers.BooleanField(read_only=True)
+    is_permanent = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = BannedUser
+        fields = (
+            'id', 'user', 'user_info', 'banned_until', 'reason',
+            'banned_by', 'banned_by_info', 'created_at', 'updated_at',
+            'is_active', 'is_permanent'
+        )
+        read_only_fields = ('id', 'created_at', 'updated_at', 'is_active')
+    
+    def get_is_permanent(self, obj):
+        return obj.banned_until is None
+
+
+class CommentRevisionSerializer(serializers.ModelSerializer):
+    """
+    Serializer for CommentRevision model.
+    """
+    edited_by_info = UserSerializer(source='edited_by', read_only=True)
+    
+    class Meta:
+        model = CommentRevision
+        fields = (
+            'id', 'content', 'edited_by', 'edited_by_info',
+            'edited_at', 'was_public', 'was_removed'
+        )
+        read_only_fields = fields
+
+
+class ModerationActionSerializer(serializers.ModelSerializer):
+    """
+    Serializer for ModerationAction model.
+    """
+    moderator_info = UserSerializer(source='moderator', read_only=True)
+    affected_user_info = UserSerializer(source='affected_user', read_only=True)
+    action_display = serializers.CharField(source='get_action_display', read_only=True)
+    
+    class Meta:
+        model = ModerationAction
+        fields = (
+            'id', 'comment_type', 'comment_id', 'moderator', 'moderator_info',
+            'action', 'action_display', 'reason', 'affected_user', 'affected_user_info',
+            'timestamp', 'ip_address'
+        )
+        read_only_fields = fields

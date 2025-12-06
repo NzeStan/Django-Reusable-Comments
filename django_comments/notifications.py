@@ -359,3 +359,141 @@ def notify_comment_rejected(comment, moderator=None):
 def notify_moderators(comment):
     """Notify moderators about a comment needing approval."""
     notification_service.notify_moderators(comment)
+
+def notify_moderators_of_flag(comment, flag, flag_count):
+    """
+    Notify moderators that a comment has been flagged.
+    
+    Args:
+        comment: Comment instance
+        flag: CommentFlag instance
+        flag_count: Total number of flags on this comment
+    """
+    if not comments_settings.SEND_NOTIFICATIONS or not comments_settings.NOTIFY_ON_FLAG:
+        return
+    
+    try:
+        # Get moderator emails
+        recipients = notification_service._get_moderator_emails()
+        
+        if not recipients:
+            logger.debug("No moderator emails configured for flag notifications")
+            return
+        
+        context = notification_service._get_notification_context(comment)
+        context['flag'] = flag
+        context['flag_count'] = flag_count
+        context['flag_type'] = flag.get_flag_display()
+        context['flag_reason'] = flag.reason
+        context['flagger'] = flag.user
+        
+        subject = _("Comment flagged as {flag_type} ({count} total flags)").format(
+            flag_type=flag.get_flag_display(),
+            count=flag_count
+        )
+        
+        notification_service._send_notification_email(
+            recipients=recipients,
+            subject=subject,
+            template=comments_settings.NOTIFICATION_FLAG_TEMPLATE,
+            context=context
+        )
+        
+        logger.info(f"Sent flag notification for comment {comment.pk}")
+        
+    except Exception as e:
+        logger.error(f"Failed to send flag notification: {e}")
+
+
+def notify_auto_hide(comment, flag_count):
+    """
+    Notify moderators that a comment was auto-hidden.
+    
+    Args:
+        comment: Comment instance
+        flag_count: Number of flags that triggered auto-hide
+    """
+    if not comments_settings.SEND_NOTIFICATIONS or not comments_settings.NOTIFY_ON_AUTO_HIDE:
+        return
+    
+    try:
+        recipients = notification_service._get_moderator_emails()
+        
+        if not recipients:
+            return
+        
+        context = notification_service._get_notification_context(comment)
+        context['flag_count'] = flag_count
+        context['threshold'] = comments_settings.AUTO_HIDE_THRESHOLD
+        context['auto_action'] = 'hidden'
+        
+        subject = _("Comment auto-hidden after {count} flags").format(count=flag_count)
+        
+        # Use moderator template (can be customized later)
+        notification_service._send_notification_email(
+            recipients=recipients,
+            subject=subject,
+            template=comments_settings.NOTIFICATION_MODERATOR_TEMPLATE,
+            context=context
+        )
+        
+        logger.info(f"Sent auto-hide notification for comment {comment.pk}")
+        
+    except Exception as e:
+        logger.error(f"Failed to send auto-hide notification: {e}")
+
+
+def notify_user_banned(ban):
+    """
+    Notify user that they have been banned.
+    
+    Args:
+        ban: BannedUser instance
+    """
+    if not comments_settings.SEND_NOTIFICATIONS:
+        return
+    
+    try:
+        if not ban.user.email:
+            return
+        
+        recipients = [ban.user.email]
+        
+        # Build context
+        try:
+            site = Site.objects.get_current()
+            domain = site.domain
+            site_name = site.name
+        except Exception:
+            domain = getattr(settings, 'SITE_DOMAIN', 'example.com')
+            site_name = getattr(settings, 'SITE_NAME', 'Our Site')
+        
+        context = {
+            'ban': ban,
+            'user': ban.user,
+            'site_name': site_name,
+            'domain': domain,
+            'protocol': 'https' if getattr(settings, 'USE_HTTPS', True) else 'http',
+        }
+        
+        if ban.banned_until:
+            subject = _("Your commenting privileges have been suspended until {date}").format(
+                date=ban.banned_until.strftime('%Y-%m-%d')
+            )
+        else:
+            subject = _("Your commenting privileges have been permanently suspended")
+        
+        # Note: You'll need to create this template
+        template = 'django_comments/email/user_banned.html'
+        
+        notification_service._send_notification_email(
+            recipients=recipients,
+            subject=subject,
+            template=template,
+            context=context
+        )
+        
+        logger.info(f"Sent ban notification to user {ban.user.pk}")
+        
+    except Exception as e:
+        logger.error(f"Failed to send ban notification: {e}")

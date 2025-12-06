@@ -6,3 +6,4 @@ urlpatterns = [
     # REST API URLs
     path('api/', include('django_comments.api.urls', namespace='api')),
 ]
+

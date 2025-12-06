@@ -113,6 +113,7 @@ def on_comment_post_delete(sender, instance, **kwargs):
 def flag_comment(comment, user, flag='other', reason=''):
     """
     Flag a comment and send a signal.
+    ENHANCED: Now checks flag thresholds and sends notifications.
     
     Args:
         comment: Comment or UUIDComment instance
@@ -122,18 +123,9 @@ def flag_comment(comment, user, flag='other', reason=''):
     
     Returns:
         CommentFlag instance
-    
-    Example:
-        from django_comments.signals import flag_comment
-        
-        flag = flag_comment(
-            comment=my_comment,
-            user=request.user,
-            flag='spam',
-            reason='This is clearly spam'
-        )
     """
-    from .models import CommentFlag
+    from .models import CommentFlag, ModerationAction
+    from .utils import check_flag_threshold, check_auto_ban_conditions, auto_ban_user
     
     # Use manager method for safe creation
     comment_flag, created = CommentFlag.objects.create_or_get_flag(
@@ -154,6 +146,38 @@ def flag_comment(comment, user, flag='other', reason=''):
             flag_type=flag,
             reason=reason
         )
+        
+        # Log moderation action
+        from .utils import log_moderation_action
+        log_moderation_action(
+            comment=comment,
+            moderator=user,
+            action='flagged',
+            reason=f"{flag}: {reason}" if reason else flag
+        )
+        
+        # Send notification to moderators
+        if comments_settings.NOTIFY_ON_FLAG:
+            flag_count = comment.flags.count()
+            threshold = comments_settings.FLAG_NOTIFICATION_THRESHOLD
+            
+            if flag_count >= threshold:
+                from .notifications import notify_moderators_of_flag
+                try:
+                    notify_moderators_of_flag(comment, comment_flag, flag_count)
+                except Exception as e:
+                    import logging
+                    logger = logging.getLogger(comments_settings.LOGGER_NAME)
+                    logger.error(f"Failed to send flag notification: {e}")
+        
+        # Check flag thresholds (auto-hide/delete)
+        actions = check_flag_threshold(comment)
+        
+        # If not deleted, check if comment owner should be banned
+        if not actions.get('deleted'):
+            should_ban, ban_reason = check_auto_ban_conditions(comment.user)
+            if should_ban:
+                auto_ban_user(comment.user, ban_reason)
     
     return comment_flag
 

@@ -9,6 +9,10 @@ app_name = 'django_comments_api'
 router = DefaultRouter()
 router.register(r'comments', views.CommentViewSet, basename='comment')
 
+# NEW: Register flag and banned user viewsets
+router.register(r'flags', views.FlagViewSet, basename='flag')
+router.register(r'banned-users', views.BannedUserViewSet, basename='banned-user')
+
 urlpatterns = [
     # Include the router URLs
     path('', include(router.urls)),

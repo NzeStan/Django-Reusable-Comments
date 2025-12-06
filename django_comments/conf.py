@@ -191,6 +191,94 @@ DEFAULTS = {
     # DEPRECATED: Use DJANGO_COMMENTS_COMMENT_MODEL setting instead
     # This setting is kept for backward compatibility but will be removed in 1.0
     'COMMENT_MODEL': None,
+
+    # ============================================================================
+    # FLAG THRESHOLDS & AUTO-MODERATION
+    # ============================================================================
+    
+    # Auto-hide comments after N user flags
+    'AUTO_HIDE_THRESHOLD': 3,
+    
+    # Auto-delete comments after N user flags (None = never auto-delete)
+    'AUTO_DELETE_THRESHOLD': 10,
+    
+    # Notify moderators when comment receives N flags
+    'FLAG_NOTIFICATION_THRESHOLD': 1,
+    
+    # Auto-hide ML-detected spam immediately
+    'AUTO_HIDE_DETECTED_SPAM': True,
+    
+    # Auto-hide profanity when PROFANITY_ACTION='flag'
+    'AUTO_HIDE_PROFANITY': False,
+    
+    # ============================================================================
+    # TRUSTED USERS & AUTO-APPROVAL
+    # ============================================================================
+    
+    # Auto-approve users after N approved comments (None = disabled)
+    'AUTO_APPROVE_AFTER_N_APPROVED': 5,
+    
+    # User groups that bypass moderation
+    'TRUSTED_USER_GROUPS': ['Verified', 'Premium'],
+    
+    # ============================================================================
+    # FLAG ABUSE PREVENTION
+    # ============================================================================
+    
+    # Maximum flags a user can create per day
+    'MAX_FLAGS_PER_DAY': 20,
+    
+    # Maximum flags a user can create per hour
+    'MAX_FLAGS_PER_HOUR': 5,
+    
+    # ============================================================================
+    # ENHANCED NOTIFICATIONS
+    # ============================================================================
+    
+    # Notify moderators when comment is flagged
+    'NOTIFY_ON_FLAG': True,
+    
+    # Notify moderators when comment is auto-hidden
+    'NOTIFY_ON_AUTO_HIDE': True,
+    
+    # Email template for flag notifications
+    'NOTIFICATION_FLAG_TEMPLATE': 'django_comments/email/moderator_flag_notification.html',
+    
+    # ============================================================================
+    # COMMENT EDITING
+    # ============================================================================
+    
+    # Enable comment editing
+    'ALLOW_COMMENT_EDITING': True,
+    
+    # Time window for editing (in seconds, None = unlimited)
+    'EDIT_TIME_WINDOW': 3600,  # 1 hour
+    
+    # Track edit history
+    'TRACK_EDIT_HISTORY': True,
+    
+    # ============================================================================
+    # MODERATION QUEUE
+    # ============================================================================
+    
+    # Page size for moderation queue
+    'MODERATION_QUEUE_PAGE_SIZE': 50,
+    
+    # Days to keep moderation logs
+    'MODERATION_LOG_RETENTION_DAYS': 90,
+    
+    # ============================================================================
+    # BAN SYSTEM
+    # ============================================================================
+    
+    # Default ban duration in days (None = permanent)
+    'DEFAULT_BAN_DURATION_DAYS': 30,
+    
+    # Auto-ban after N rejected comments
+    'AUTO_BAN_AFTER_REJECTIONS': 5,
+    
+    # Auto-ban after N spam flags
+    'AUTO_BAN_AFTER_SPAM_FLAGS': 3,
 }
 
 

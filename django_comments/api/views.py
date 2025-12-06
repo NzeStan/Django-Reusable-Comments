@@ -9,12 +9,18 @@ from rest_framework.response import Response
 from django_filters.rest_framework import DjangoFilterBackend
 from ..conf import comments_settings
 from ..exceptions import CommentModerated
-from ..models import CommentFlag
+from ..models import CommentFlag, BannedUser, ModerationAction, CommentRevision
 from ..signals import flag_comment, approve_comment, reject_comment
 from ..utils import (
     get_comment_model,
     get_model_from_content_type_string,
+    can_edit_comment,
+    create_comment_revision,
+    log_moderation_action,
+    check_user_banned,
 )
+from django.db.models import Count, Q, Prefetch
+from rest_framework import status
 from ..drf_integration import get_comment_pagination_class
 from .serializers import (
     CommentSerializer, 
@@ -279,6 +285,313 @@ class CommentViewSet(viewsets.ModelViewSet):
             {'detail': _("Comment rejected successfully.")},
             status=status.HTTP_200_OK
         )
+    
+    @action(detail=False, methods=['get'], permission_classes=[IsAuthenticated])
+    def moderation_queue(self, request):
+        """
+        Get comments needing moderation.
+        Returns pending, flagged, and spam-detected comments.
+        """
+        # Check moderation permission
+        if not request.user.has_perm('django_comments.can_moderate_comments'):
+            return Response(
+                {'detail': _("You don't have permission to access the moderation queue.")},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        # Pending comments (awaiting approval)
+        pending = Comment.objects.filter(
+            is_public=False,
+            is_removed=False
+        ).optimized_for_list().order_by('-created_at')
+        
+        # Flagged comments (has flags, may or may not be public)
+        flagged = Comment.objects.annotate(
+            flag_count=models.Count('flags')
+        ).filter(
+            flag_count__gt=0
+        ).optimized_for_list().order_by('-flag_count', '-created_at')
+        
+        # Spam-detected comments (auto-flagged)
+        spam_detected = Comment.objects.filter(
+            flags__flag='spam',
+            flags__user__username='system'
+        ).distinct().optimized_for_list().order_by('-created_at')
+        
+        # Apply pagination
+        page_size = comments_settings.MODERATION_QUEUE_PAGE_SIZE
+        
+        return Response({
+            'pending': {
+                'count': pending.count(),
+                'results': CommentSerializer(
+                    pending[:page_size],
+                    many=True,
+                    context={'request': request}
+                ).data
+            },
+            'flagged': {
+                'count': flagged.count(),
+                'results': CommentSerializer(
+                    flagged[:page_size],
+                    many=True,
+                    context={'request': request}
+                ).data
+            },
+            'spam_detected': {
+                'count': spam_detected.count(),
+                'results': CommentSerializer(
+                    spam_detected[:page_size],
+                    many=True,
+                    context={'request': request}
+                ).data
+            }
+        })
+
+
+    @action(detail=False, methods=['post'], permission_classes=[IsAuthenticated])
+    def bulk_approve(self, request):
+        """
+        Approve multiple comments at once.
+        """
+        # Check moderation permission
+        if not request.user.has_perm('django_comments.can_moderate_comments'):
+            return Response(
+                {'detail': _("You don't have permission to moderate comments.")},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        comment_ids = request.data.get('comment_ids', [])
+        
+        if not comment_ids:
+            return Response(
+                {'detail': _("No comment IDs provided.")},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Get comments
+        comments = Comment.objects.filter(pk__in=comment_ids)
+        
+        approved_count = 0
+        for comment in comments:
+            if not comment.is_public:
+                approve_comment(comment, moderator=request.user)
+                approved_count += 1
+        
+        return Response({
+            'detail': _(f"Successfully approved {approved_count} comments."),
+            'approved_count': approved_count
+        })
+
+
+    @action(detail=False, methods=['post'], permission_classes=[IsAuthenticated])
+    def bulk_reject(self, request):
+        """
+        Reject multiple comments at once.
+        """
+        # Check moderation permission
+        if not request.user.has_perm('django_comments.can_moderate_comments'):
+            return Response(
+                {'detail': _("You don't have permission to moderate comments.")},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        comment_ids = request.data.get('comment_ids', [])
+        reason = request.data.get('reason', '')
+        
+        if not comment_ids:
+            return Response(
+                {'detail': _("No comment IDs provided.")},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Get comments
+        comments = Comment.objects.filter(pk__in=comment_ids)
+        
+        rejected_count = 0
+        for comment in comments:
+            if comment.is_public:
+                reject_comment(comment, moderator=request.user)
+                
+                # Log with reason if provided
+                if reason:
+                    log_moderation_action(
+                        comment=comment,
+                        moderator=request.user,
+                        action='rejected',
+                        reason=reason
+                    )
+                
+                rejected_count += 1
+        
+        return Response({
+            'detail': _(f"Successfully rejected {rejected_count} comments."),
+            'rejected_count': rejected_count
+        })
+
+
+    @action(detail=False, methods=['post'], permission_classes=[IsAuthenticated])
+    def bulk_delete(self, request):
+        """
+        Delete multiple comments at once.
+        """
+        # Check moderation permission
+        if not request.user.has_perm('django_comments.can_moderate_comments'):
+            return Response(
+                {'detail': _("You don't have permission to moderate comments.")},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        comment_ids = request.data.get('comment_ids', [])
+        reason = request.data.get('reason', '')
+        
+        if not comment_ids:
+            return Response(
+                {'detail': _("No comment IDs provided.")},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Log before deleting
+        comments = Comment.objects.filter(pk__in=comment_ids)
+        for comment in comments:
+            log_moderation_action(
+                comment=comment,
+                moderator=request.user,
+                action='deleted',
+                reason=reason
+            )
+        
+        deleted_count, _ = comments.delete()
+        
+        return Response({
+            'detail': _(f"Successfully deleted {deleted_count} comments."),
+            'deleted_count': deleted_count
+        })
+
+
+    @action(detail=False, methods=['get'], permission_classes=[IsAuthenticated])
+    def flag_stats(self, request):
+        """
+        Get flag statistics.
+        """
+        # Check moderation permission
+        if not request.user.has_perm('django_comments.can_moderate_comments'):
+            return Response(
+                {'detail': _("You don't have permission to view flag statistics.")},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        from ..models import CommentFlag
+        
+        # Total flags
+        total_flags = CommentFlag.objects.count()
+        
+        # By type
+        by_type = CommentFlag.objects.values('flag').annotate(
+            count=Count('id')
+        ).order_by('-count')
+        
+        # Top flagged comments
+        top_flagged = Comment.objects.annotate(
+            flag_count=Count('flags')
+        ).filter(
+            flag_count__gt=0
+        ).order_by('-flag_count')[:10]
+        
+        # Unreviewed flags
+        unreviewed_count = CommentFlag.objects.filter(reviewed=False).count()
+        
+        # Flags by day (last 30 days)
+        from datetime import timedelta
+        thirty_days_ago = timezone.now() - timedelta(days=30)
+        flags_by_day = CommentFlag.objects.filter(
+            created_at__gte=thirty_days_ago
+        ).extra(
+            select={'day': 'date(created_at)'}
+        ).values('day').annotate(
+            count=Count('id')
+        ).order_by('day')
+        
+        return Response({
+            'total_flags': total_flags,
+            'unreviewed_count': unreviewed_count,
+            'by_type': list(by_type),
+            'top_flagged_comments': CommentSerializer(
+                top_flagged,
+                many=True,
+                context={'request': request}
+            ).data,
+            'flags_by_day': list(flags_by_day),
+        })
+
+
+    @action(detail=True, methods=['patch'], permission_classes=[IsAuthenticated])
+    def edit(self, request, pk=None):
+        """
+        Edit comment content with revision tracking.
+        """
+        comment = self.get_object()
+        
+        # Check if user can edit
+        can_edit, reason = can_edit_comment(comment, request.user)
+        if not can_edit:
+            return Response(
+                {'detail': reason},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        new_content = request.data.get('content')
+        if not new_content:
+            return Response(
+                {'detail': _("Content is required.")},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Create revision before editing
+        create_comment_revision(comment, edited_by=request.user)
+        
+        # Update content
+        comment.content = new_content
+        comment.save(update_fields=['content', 'updated_at'])
+        
+        # Log action
+        log_moderation_action(
+            comment=comment,
+            moderator=request.user,
+            action='edited',
+            reason='User edited own comment'
+        )
+        
+        serializer = self.get_serializer(comment)
+        return Response(serializer.data)
+
+
+    @action(detail=True, methods=['get'], permission_classes=[IsAuthenticated])
+    def history(self, request, pk=None):
+        """
+        Get edit history for a comment.
+        """
+        comment = self.get_object()
+        
+        # Only owner or moderators can view history
+        if comment.user != request.user and not request.user.has_perm('django_comments.can_moderate_comments'):
+            return Response(
+                {'detail': _("You don't have permission to view this comment's history.")},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        from django.contrib.contenttypes.models import ContentType
+        
+        revisions = CommentRevision.objects.filter(
+            comment_type=ContentType.objects.get_for_model(comment),
+            comment_id=str(comment.pk)
+        ).select_related('edited_by').order_by('-edited_at')
+        
+        from .serializers import CommentRevisionSerializer
+        return Response(
+            CommentRevisionSerializer(revisions, many=True).data
+        )
+
 
 
 class ContentObjectCommentsViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
@@ -378,3 +691,167 @@ class ContentObjectCommentsViewSet(mixins.ListModelMixin, viewsets.GenericViewSe
         queryset = queryset.order_by(*ordering)
         
         return queryset
+    
+
+
+
+# ============================================================================
+# NEW VIEWSET: FlagViewSet
+# ============================================================================
+
+class FlagViewSet(viewsets.ReadOnlyModelViewSet):
+    """
+    API endpoints for viewing and reviewing flags.
+    """
+    serializer_class = CommentFlagSerializer
+    permission_classes = [IsAuthenticated]
+    pagination_class = get_comment_pagination_class()
+    
+    def get_queryset(self):
+        """Only moderators can view flags."""
+        if not self.request.user.has_perm('django_comments.can_moderate_comments'):
+            return CommentFlag.objects.none()
+        
+        return CommentFlag.objects.select_related(
+            'user',
+            'comment_type',
+            'reviewed_by'
+        ).order_by('-created_at')
+    
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def review(self, request, pk=None):
+        """
+        Mark a flag as reviewed.
+        """
+        if not request.user.has_perm('django_comments.can_moderate_comments'):
+            return Response(
+                {'detail': _("You don't have permission to review flags.")},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        flag = self.get_object()
+        action = request.data.get('action')  # 'dismissed' or 'actioned'
+        notes = request.data.get('notes', '')
+        
+        if action not in ['dismissed', 'actioned']:
+            return Response(
+                {'detail': _("Invalid action. Must be 'dismissed' or 'actioned'.")},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        flag.mark_reviewed(
+            moderator=request.user,
+            action=action,
+            notes=notes
+        )
+        
+        return Response(
+            CommentFlagSerializer(flag).data
+        )
+
+
+# ============================================================================
+# NEW VIEWSET: BannedUserViewSet
+# ============================================================================
+
+class BannedUserViewSet(viewsets.ModelViewSet):
+    """
+    API endpoints for managing banned users.
+    """
+    queryset = BannedUser.objects.select_related('user', 'banned_by').order_by('-created_at')
+    permission_classes = [IsAuthenticated]
+    pagination_class = get_comment_pagination_class()
+    
+    def get_permissions(self):
+        """Only moderators can manage bans."""
+        if self.action in ['list', 'retrieve']:
+            return [IsAuthenticated()]
+        return [IsAuthenticated()]  # Will check permission in method
+    
+    def get_queryset(self):
+        """Moderators see all, users see only their own."""
+        if self.request.user.has_perm('django_comments.can_moderate_comments'):
+            return BannedUser.objects.select_related('user', 'banned_by').order_by('-created_at')
+        
+        return BannedUser.objects.filter(
+            user=self.request.user
+        ).select_related('banned_by')
+    
+    def create(self, request, *args, **kwargs):
+        """Create a new ban."""
+        if not request.user.has_perm('django_comments.can_moderate_comments'):
+            return Response(
+                {'detail': _("You don't have permission to ban users.")},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        from django.contrib.auth import get_user_model
+        User = get_user_model()
+        
+        user_id = request.data.get('user_id')
+        reason = request.data.get('reason', 'No reason provided')
+        duration_days = request.data.get('duration_days')
+        
+        try:
+            user = User.objects.get(pk=user_id)
+        except User.DoesNotExist:
+            return Response(
+                {'detail': _("User not found.")},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # Calculate ban expiry
+        banned_until = None
+        if duration_days:
+            from datetime import timedelta
+            banned_until = timezone.now() + timedelta(days=int(duration_days))
+        
+        # Create ban
+        ban = BannedUser.objects.create(
+            user=user,
+            banned_until=banned_until,
+            reason=reason,
+            banned_by=request.user
+        )
+        
+        # Log action
+        log_moderation_action(
+            comment=None,
+            moderator=request.user,
+            action='banned_user',
+            reason=reason,
+            affected_user=user,
+            ip_address=request.META.get('REMOTE_ADDR')
+        )
+        
+        # Notify user
+        from ..notifications import notify_user_banned
+        notify_user_banned(ban)
+        
+        from .serializers import BannedUserSerializer
+        return Response(
+            BannedUserSerializer(ban).data,
+            status=status.HTTP_201_CREATED
+        )
+    
+    def destroy(self, request, *args, **kwargs):
+        """Unban a user."""
+        if not request.user.has_perm('django_comments.can_moderate_comments'):
+            return Response(
+                {'detail': _("You don't have permission to unban users.")},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        ban = self.get_object()
+        
+        # Log action
+        log_moderation_action(
+            comment=None,
+            moderator=request.user,
+            action='unbanned_user',
+            reason=f"Unbanned: {ban.reason}",
+            affected_user=ban.user,
+            ip_address=request.META.get('REMOTE_ADDR')
+        )
+        
+        return super().destroy(request, *args, **kwargs)

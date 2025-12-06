@@ -8,7 +8,8 @@ from django.core.exceptions import ImproperlyConfigured, ObjectDoesNotExist
 from django.db import models
 from .conf import comments_settings
 from django.conf import settings
-
+from django.utils import timezone
+from datetime import timedelta
 logger = logging.getLogger(comments_settings.LOGGER_NAME)
 
 
@@ -417,3 +418,476 @@ def check_comment_permissions(user, comment_or_object, action='view'):
         return hasattr(comment_or_object, 'user') and comment_or_object.user == user
 
     return False
+
+def check_user_banned(user):
+    """
+    Check if a user is banned from commenting.
+    
+    Args:
+        user: User instance
+    
+    Returns:
+        tuple: (is_banned: bool, ban_info: dict or None)
+    """
+    from .models import BannedUser
+    
+    if not user or not user.is_authenticated:
+        return False, None
+    
+    # Check for active bans
+    active_bans = BannedUser.objects.filter(
+        user=user
+    ).filter(
+        models.Q(banned_until__isnull=True) |  # Permanent
+        models.Q(banned_until__gt=timezone.now())  # Temporary still active
+    ).first()
+    
+    if active_bans:
+        ban_info = {
+            'reason': active_bans.reason,
+            'banned_until': active_bans.banned_until,
+            'is_permanent': active_bans.banned_until is None,
+            'banned_by': active_bans.banned_by,
+        }
+        return True, ban_info
+    
+    return False, None
+
+
+def check_flag_abuse(user):
+    """
+    Check if user is abusing the flag system.
+    
+    Args:
+        user: User instance
+    
+    Returns:
+        tuple: (is_abuse: bool, reason: str or None)
+    
+    Raises:
+        RateLimitExceeded: If user exceeds flag limits
+    """
+    from .models import CommentFlag
+    from .exceptions import RateLimitExceeded
+    
+    if not user or not user.is_authenticated:
+        return False, None
+    
+    # Check daily limit
+    daily_limit = comments_settings.MAX_FLAGS_PER_DAY
+    if daily_limit:
+        daily_count = CommentFlag.objects.filter(
+            user=user,
+            created_at__gte=timezone.now() - timedelta(days=1)
+        ).count()
+        
+        if daily_count >= daily_limit:
+            raise RateLimitExceeded(
+                message=f"You have exceeded the daily flag limit of {daily_limit}.",
+                retry_after=86400  # 24 hours
+            )
+    
+    # Check hourly limit
+    hourly_limit = comments_settings.MAX_FLAGS_PER_HOUR
+    if hourly_limit:
+        hourly_count = CommentFlag.objects.filter(
+            user=user,
+            created_at__gte=timezone.now() - timedelta(hours=1)
+        ).count()
+        
+        if hourly_count >= hourly_limit:
+            raise RateLimitExceeded(
+                message=f"You have exceeded the hourly flag limit of {hourly_limit}.",
+                retry_after=3600  # 1 hour
+            )
+    
+    return False, None
+
+
+def should_auto_approve_user(user):
+    """
+    Check if user should bypass moderation.
+    
+    Args:
+        user: User instance
+    
+    Returns:
+        bool: True if user should be auto-approved
+    """
+    if not user or not user.is_authenticated:
+        return False
+    
+    # Staff always auto-approved
+    if user.is_staff or user.is_superuser:
+        return True
+    
+    # Check trusted groups
+    trusted_groups = comments_settings.TRUSTED_USER_GROUPS
+    if trusted_groups:
+        user_groups = set(user.groups.values_list('name', flat=True))
+        if user_groups & set(trusted_groups):
+            return True
+    
+    # Check approval history
+    auto_approve_threshold = comments_settings.AUTO_APPROVE_AFTER_N_APPROVED
+    if auto_approve_threshold:
+        Comment = get_comment_model()
+        approved_count = Comment.objects.filter(
+            user=user,
+            is_public=True,
+            is_removed=False
+        ).count()
+        
+        if approved_count >= auto_approve_threshold:
+            return True
+    
+    return False
+
+
+def check_flag_threshold(comment):
+    """
+    Check if comment has exceeded flag thresholds and take action.
+    
+    Args:
+        comment: Comment instance
+    
+    Returns:
+        dict: Actions taken
+    """
+    from .models import ModerationAction
+    
+    flag_count = comment.flags.count()
+    actions_taken = {
+        'hidden': False,
+        'deleted': False,
+        'notified': False,
+    }
+    
+    # Check delete threshold
+    delete_threshold = comments_settings.AUTO_DELETE_THRESHOLD
+    if delete_threshold and flag_count >= delete_threshold:
+        # Log action
+        ModerationAction.objects.create(
+            comment=comment,
+            moderator=None,  # System action
+            action='deleted',
+            reason=f'Auto-deleted after {flag_count} flags'
+        )
+        comment.delete()
+        actions_taken['deleted'] = True
+        logger.info(f"Auto-deleted comment {comment.pk} after {flag_count} flags")
+        return actions_taken
+    
+    # Check hide threshold
+    hide_threshold = comments_settings.AUTO_HIDE_THRESHOLD
+    if hide_threshold and flag_count >= hide_threshold and comment.is_public:
+        comment.is_public = False
+        comment.save(update_fields=['is_public'])
+        
+        # Log action
+        ModerationAction.objects.create(
+            comment=comment,
+            moderator=None,  # System action
+            action='rejected',
+            reason=f'Auto-hidden after {flag_count} flags'
+        )
+        
+        actions_taken['hidden'] = True
+        logger.info(f"Auto-hidden comment {comment.pk} after {flag_count} flags")
+        
+        # Notify moderators if enabled
+        if comments_settings.NOTIFY_ON_AUTO_HIDE:
+            from .notifications import notify_auto_hide
+            notify_auto_hide(comment, flag_count)
+            actions_taken['notified'] = True
+    
+    return actions_taken
+
+
+def apply_automatic_flags(comment):
+    """
+    Apply automatic flags to a comment based on content analysis.
+    ENHANCED: Now supports auto-hiding.
+    
+    Args:
+        comment: Comment instance
+    """
+    from .models import CommentFlag, ModerationAction
+    from django.contrib.auth import get_user_model
+    
+    # Get system user for automatic flags
+    User = get_user_model()
+    system_user, _ = User.objects.get_or_create(
+        username='system',
+        defaults={
+            'email': 'system@django-comments.local',
+            'is_active': False,
+        }
+    )
+    
+    # Get content analysis
+    _, flags_to_apply = process_comment_content(comment.content)
+    
+    actions_taken = []
+    
+    # Apply spam flag if needed
+    if flags_to_apply.get('auto_flag_spam'):
+        try:
+            reason = flags_to_apply.get('spam_reason') or 'Automatically flagged by spam detection system'
+            CommentFlag.objects.create_or_get_flag(
+                comment=comment,
+                user=system_user,
+                flag='spam',
+                reason=reason
+            )
+            logger.info(f"Auto-flagged comment {comment.pk} as spam")
+            actions_taken.append('spam_flagged')
+            
+            # Auto-hide if enabled
+            if comments_settings.AUTO_HIDE_DETECTED_SPAM and comment.is_public:
+                comment.is_public = False
+                comment.save(update_fields=['is_public'])
+                
+                ModerationAction.objects.create(
+                    comment=comment,
+                    moderator=None,
+                    action='rejected',
+                    reason='Auto-hidden: Spam detected'
+                )
+                
+                logger.info(f"Auto-hidden comment {comment.pk} (spam detected)")
+                actions_taken.append('auto_hidden')
+                
+        except Exception as e:
+            logger.error(f"Failed to auto-flag comment as spam: {e}")
+    
+    # Apply profanity flag if needed
+    if flags_to_apply.get('auto_flag_profanity'):
+        try:
+            CommentFlag.objects.create_or_get_flag(
+                comment=comment,
+                user=system_user,
+                flag='offensive',
+                reason='Automatically flagged for profanity'
+            )
+            logger.info(f"Auto-flagged comment {comment.pk} for profanity")
+            actions_taken.append('profanity_flagged')
+            
+            # Auto-hide if enabled
+            if comments_settings.AUTO_HIDE_PROFANITY and comment.is_public:
+                comment.is_public = False
+                comment.save(update_fields=['is_public'])
+                
+                ModerationAction.objects.create(
+                    comment=comment,
+                    moderator=None,
+                    action='rejected',
+                    reason='Auto-hidden: Profanity detected'
+                )
+                
+                logger.info(f"Auto-hidden comment {comment.pk} (profanity detected)")
+                actions_taken.append('auto_hidden')
+                
+        except Exception as e:
+            logger.error(f"Failed to auto-flag comment for profanity: {e}")
+    
+    return actions_taken
+
+
+def can_edit_comment(comment, user):
+    """
+    Check if user can edit a comment.
+    
+    Args:
+        comment: Comment instance
+        user: User instance
+    
+    Returns:
+        tuple: (can_edit: bool, reason: str or None)
+    """
+    if not comments_settings.ALLOW_COMMENT_EDITING:
+        return False, "Comment editing is disabled"
+    
+    # Only owner can edit (unless staff)
+    if comment.user != user and not (user.is_staff or user.is_superuser):
+        return False, "You can only edit your own comments"
+    
+    # Check edit time window
+    edit_window = comments_settings.EDIT_TIME_WINDOW
+    if edit_window:
+        time_since_creation = (timezone.now() - comment.created_at).total_seconds()
+        if time_since_creation > edit_window:
+            return False, f"Edit window of {edit_window // 60} minutes has expired"
+    
+    # Can't edit removed comments
+    if comment.is_removed:
+        return False, "Cannot edit removed comments"
+    
+    return True, None
+
+
+def create_comment_revision(comment, edited_by):
+    """
+    Create a revision before editing a comment.
+    
+    Args:
+        comment: Comment instance
+        edited_by: User making the edit
+    
+    Returns:
+        CommentRevision instance or None
+    """
+    if not comments_settings.TRACK_EDIT_HISTORY:
+        return None
+    
+    from .models import CommentRevision
+    from django.contrib.contenttypes.models import ContentType
+    
+    try:
+        revision = CommentRevision.objects.create(
+            comment_type=ContentType.objects.get_for_model(comment),
+            comment_id=str(comment.pk),
+            content=comment.content,
+            edited_by=edited_by,
+            was_public=comment.is_public,
+            was_removed=comment.is_removed
+        )
+        logger.info(f"Created revision for comment {comment.pk}")
+        return revision
+    except Exception as e:
+        logger.error(f"Failed to create revision: {e}")
+        return None
+
+
+def log_moderation_action(comment, moderator, action, reason='', affected_user=None, ip_address=None):
+    """
+    Log a moderation action.
+    
+    Args:
+        comment: Comment instance (can be None for user bans)
+        moderator: User performing the action
+        action: Action type
+        reason: Reason for action
+        affected_user: User affected by action (for bans)
+        ip_address: IP address of moderator
+    
+    Returns:
+        ModerationAction instance
+    """
+    from .models import ModerationAction
+    from django.contrib.contenttypes.models import ContentType
+    
+    try:
+        action_data = {
+            'moderator': moderator,
+            'action': action,
+            'reason': reason,
+            'affected_user': affected_user,
+            'ip_address': ip_address,
+        }
+        
+        if comment:
+            action_data['comment_type'] = ContentType.objects.get_for_model(comment)
+            action_data['comment_id'] = str(comment.pk)
+        
+        mod_action = ModerationAction.objects.create(**action_data)
+        logger.info(f"Logged moderation action: {action} by {moderator}")
+        return mod_action
+    except Exception as e:
+        logger.error(f"Failed to log moderation action: {e}")
+        return None
+
+
+def check_auto_ban_conditions(user):
+    """
+    Check if user should be auto-banned based on their history.
+    
+    Args:
+        user: User instance
+    
+    Returns:
+        tuple: (should_ban: bool, reason: str or None)
+    """
+    from .models import CommentFlag
+    
+    Comment = get_comment_model()
+    
+    # Check rejected comments
+    rejection_threshold = comments_settings.AUTO_BAN_AFTER_REJECTIONS
+    if rejection_threshold:
+        rejected_count = Comment.objects.filter(
+            user=user,
+            is_removed=True
+        ).count()
+        
+        if rejected_count >= rejection_threshold:
+            return True, f"Auto-ban: {rejected_count} rejected comments"
+    
+    # Check spam flags
+    spam_threshold = comments_settings.AUTO_BAN_AFTER_SPAM_FLAGS
+    if spam_threshold:
+        spam_flags = CommentFlag.objects.filter(
+            comment__user=user,
+            flag='spam'
+        ).count()
+        
+        if spam_flags >= spam_threshold:
+            return True, f"Auto-ban: {spam_flags} spam flags"
+    
+    return False, None
+
+
+def auto_ban_user(user, reason):
+    """
+    Automatically ban a user.
+    
+    Args:
+        user: User instance
+        reason: Reason for ban
+    
+    Returns:
+        BannedUser instance or None
+    """
+    from .models import BannedUser
+    from django.contrib.auth import get_user_model
+    
+    try:
+        # Get system user
+        User = get_user_model()
+        system_user, _ = User.objects.get_or_create(
+            username='system',
+            defaults={
+                'email': 'system@django-comments.local',
+                'is_active': False,
+            }
+        )
+        
+        # Calculate ban duration
+        ban_duration = comments_settings.DEFAULT_BAN_DURATION_DAYS
+        banned_until = None
+        if ban_duration:
+            banned_until = timezone.now() + timedelta(days=ban_duration)
+        
+        # Create ban
+        ban = BannedUser.objects.create(
+            user=user,
+            banned_until=banned_until,
+            reason=reason,
+            banned_by=system_user
+        )
+        
+        # Log action
+        log_moderation_action(
+            comment=None,
+            moderator=system_user,
+            action='banned_user',
+            reason=reason,
+            affected_user=user
+        )
+        
+        logger.warning(f"Auto-banned user {user.pk}: {reason}")
+        return ban
+        
+    except Exception as e:
+        logger.error(f"Failed to auto-ban user: {e}")
+        return None

@@ -136,25 +136,6 @@ class BaseCommentMixin(models.Model):
     def save(self, *args, **kwargs):
         """
         OPTIMIZED save method that minimizes database operations.
-        
-        Strategy:
-        - Child comments: Single INSERT with temporary path, then UPDATE path only
-        - Root comments: Single INSERT with placeholders, then UPDATE both fields
-        
-        
-        Performance:
-        - Child comment: 2 DB ops (INSERT + UPDATE 1 field)
-        - Root comment: 2 DB ops (INSERT + UPDATE 2 fields)
-        
-        Previous approach: Same number of ops but less clear separation
-        
-        Key improvements:
-        ✅ Works correctly with deep hierarchies
-        ✅ Thread-safe (uses atomic transactions)
-        ✅ Validates parent state before save
-        ✅ Properly handles UUID and integer PKs
-        ✅ Avoids recursion issues
-        ✅ Compatible with bulk operations (via manager)
         """
         is_new = self._state.adding
         
@@ -167,56 +148,30 @@ class BaseCommentMixin(models.Model):
         with transaction.atomic():
             if self.parent:
                 # === CHILD COMMENT ===
-                # Validate parent first (catches issues early)
                 self._validate_parent()
-                
-                # Inherit thread_id from parent (this never changes)
                 self.thread_id = self.parent.thread_id
-                
-                # Set temporary path (will be updated after we get PK)
-                # Using a descriptive placeholder helps with debugging
                 self.path = 'PENDING'
-                
-                # Save to database - gets PK assigned
                 super().save(*args, **kwargs)
-                
-                # Now calculate final path with actual PK
                 final_path = f"{self.parent.path}/{self.pk}"
-                
-                # Update path using QuerySet (doesn't trigger save() again)
                 type(self).objects.filter(pk=self.pk).update(path=final_path)
-                
-                # Update instance to reflect database state
                 self.path = final_path
-                
                 logger.debug(
                     f"Created child comment {self.pk} with path: {self.path}, "
                     f"thread_id: {self.thread_id}"
                 )
-                
             else:
                 # === ROOT COMMENT ===
-                # Set placeholders (will be updated after we get PK)
                 self.path = 'PENDING'
                 self.thread_id = 'PENDING'
-                
-                # Save to database - gets PK assigned
                 super().save(*args, **kwargs)
-                
-                # Calculate final values using PK
                 final_path = str(self.pk)
                 final_thread_id = str(self.pk)
-                
-                # Update both fields using QuerySet
                 type(self).objects.filter(pk=self.pk).update(
                     path=final_path,
                     thread_id=final_thread_id
                 )
-                
-                # Update instance to reflect database state
                 self.path = final_path
                 self.thread_id = final_thread_id
-                
                 logger.debug(
                     f"Created root comment {self.pk} with path: {self.path}, "
                     f"thread_id: {self.thread_id}"
@@ -299,7 +254,7 @@ class Comment(AbstractCommentBase, BaseCommentMixin):
             models.Index(fields=['parent']),
             models.Index(fields=['user']),
             models.Index(fields=['thread_id']),
-            models.Index(fields=['path']),  # Important for hierarchy queries
+            models.Index(fields=['path']),
         ]
 
 
@@ -344,25 +299,28 @@ class UUIDComment(AbstractCommentBase, BaseCommentMixin):
             models.Index(fields=['parent']),
             models.Index(fields=['user']),
             models.Index(fields=['thread_id']),
-            models.Index(fields=['path']),  # Important for hierarchy queries
+            models.Index(fields=['path']),
         ]
 
 
 # ============================================================================
-# COMMENT FLAG
+# COMMENT FLAG - ENHANCED
 # ============================================================================
 
 class CommentFlag(models.Model):
     """
     Records user flags for comments that may be inappropriate.
-    Uses GenericForeignKey to work with both Comment and UUIDComment.
-    
-    IMPORTANT: This model uses GenericForeignKey to support both
-    Comment (integer PK) and UUIDComment (UUID PK) models.
+    ENHANCED: Now includes review status and better categorization.
     """
     
     FLAG_CHOICES = (
         ('spam', _('Spam')),
+        ('harassment', _('Harassment')),
+        ('hate_speech', _('Hate Speech')),
+        ('violence', _('Violence/Threats')),
+        ('sexual', _('Sexual Content')),
+        ('misinformation', _('Misinformation')),
+        ('off_topic', _('Off Topic')),
         ('offensive', _('Offensive')),
         ('inappropriate', _('Inappropriate')),
         ('other', _('Other')),
@@ -409,6 +367,45 @@ class CommentFlag(models.Model):
         help_text=_('Optional reason for flagging')
     )
     
+    # Review status (NEW)
+    reviewed = models.BooleanField(
+        _('Reviewed'),
+        default=False,
+        help_text=_('Whether this flag has been reviewed by a moderator')
+    )
+    
+    reviewed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        verbose_name=_('Reviewed By'),
+        related_name='flags_reviewed'
+    )
+    
+    reviewed_at = models.DateTimeField(
+        _('Reviewed At'),
+        null=True,
+        blank=True
+    )
+    
+    REVIEW_ACTION_CHOICES = (
+        ('dismissed', _('Dismissed')),
+        ('actioned', _('Actioned')),
+    )
+    
+    review_action = models.CharField(
+        _('Review Action'),
+        max_length=20,
+        choices=REVIEW_ACTION_CHOICES,
+        blank=True
+    )
+    
+    review_notes = models.TextField(
+        _('Review Notes'),
+        blank=True
+    )
+    
     # Manager
     objects = CommentFlagManager()
     
@@ -416,8 +413,6 @@ class CommentFlag(models.Model):
         verbose_name = _('Comment flag')
         verbose_name_plural = _('Comment flags')
         
-        # ✅ FIXED: Use constraints instead of unique_together
-        # (unique_together doesn't work with GenericForeignKey)
         constraints = [
             models.UniqueConstraint(
                 fields=['comment_type', 'comment_id', 'user', 'flag'],
@@ -428,22 +423,22 @@ class CommentFlag(models.Model):
             )
         ]
         
-        # Indexes for performance
         indexes = [
-            # For looking up flags for a specific comment
             models.Index(
                 fields=['comment_type', 'comment_id'],
                 name='commentflag_comment_idx'
             ),
-            # For looking up flags by user
             models.Index(
                 fields=['user', 'flag'],
                 name='commentflag_user_flag_idx'
             ),
-            # For filtering by flag type
             models.Index(
                 fields=['flag', 'created_at'],
                 name='commentflag_flag_date_idx'
+            ),
+            models.Index(
+                fields=['reviewed', 'created_at'],
+                name='commentflag_review_idx'
             ),
         ]
         
@@ -463,19 +458,13 @@ class CommentFlag(models.Model):
             return f'CommentFlag {self.pk}'
     
     def clean(self):
-        """
-        Validate the flag before saving.
-        Ensures the comment actually exists.
-        """
+        """Validate the flag before saving."""
         super().clean()
         
-        # Validate that comment exists
         if self.comment_type and self.comment_id:
             try:
-                # Try to get the comment
                 model_class = self.comment_type.model_class()
                 if model_class:
-                    # Check if comment exists
                     exists = model_class.objects.filter(pk=self.comment_id).exists()
                     if not exists:
                         raise ValidationError({
@@ -487,3 +476,229 @@ class CommentFlag(models.Model):
                 raise ValidationError({
                     'comment': _('Invalid comment reference: {error}').format(error=str(e))
                 })
+    
+    def mark_reviewed(self, moderator, action, notes=''):
+        """Mark this flag as reviewed."""
+        self.reviewed = True
+        self.reviewed_by = moderator
+        self.reviewed_at = timezone.now()
+        self.review_action = action
+        self.review_notes = notes
+        self.save(update_fields=['reviewed', 'reviewed_by', 'reviewed_at', 'review_action', 'review_notes'])
+
+
+# ============================================================================
+# BANNED USER - NEW
+# ============================================================================
+
+class BannedUser(models.Model):
+    """
+    Track users who are banned from commenting.
+    Supports both permanent and temporary bans.
+    """
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        verbose_name=_('User'),
+        related_name='comment_bans'
+    )
+    
+    banned_until = models.DateTimeField(
+        _('Banned Until'),
+        null=True,
+        blank=True,
+        help_text=_('Leave empty for permanent ban')
+    )
+    
+    reason = models.TextField(
+        _('Reason'),
+        help_text=_('Reason for banning this user')
+    )
+    
+    banned_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        verbose_name=_('Banned By'),
+        related_name='users_banned'
+    )
+    
+    created_at = models.DateTimeField(_('Created at'), auto_now_add=True)
+    updated_at = models.DateTimeField(_('Updated at'), auto_now=True)
+    
+    class Meta:
+        verbose_name = _('Banned User')
+        verbose_name_plural = _('Banned Users')
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['user', 'banned_until']),
+        ]
+    
+    def __str__(self):
+        if self.banned_until:
+            return _("{user} banned until {date}").format(
+                user=self.user.get_username(),
+                date=self.banned_until.strftime('%Y-%m-%d')
+            )
+        return _("{user} permanently banned").format(user=self.user.get_username())
+    
+    @property
+    def is_active(self):
+        """Check if ban is currently active."""
+        if self.banned_until is None:
+            return True  # Permanent ban
+        return timezone.now() < self.banned_until
+    
+    @classmethod
+    def is_user_banned(cls, user):
+        """Check if a user is currently banned."""
+        if not user or not user.is_authenticated:
+            return False
+        
+        return cls.objects.filter(
+            user=user,
+            banned_until__isnull=True  # Permanent ban
+        ).exists() or cls.objects.filter(
+            user=user,
+            banned_until__gt=timezone.now()  # Temporary ban still active
+        ).exists()
+
+
+# ============================================================================
+# COMMENT REVISION - NEW
+# ============================================================================
+
+class CommentRevision(models.Model):
+    """
+    Track edit history of comments.
+    Stores previous versions for audit trail.
+    """
+    # GenericForeignKey to support both Comment types
+    comment_type = models.ForeignKey(
+        ContentType,
+        on_delete=models.CASCADE,
+        verbose_name=_('Comment Type')
+    )
+    comment_id = models.TextField(_('Comment ID'))
+    comment = GenericForeignKey('comment_type', 'comment_id')
+    
+    content = models.TextField(
+        _('Content'),
+        help_text=_('Previous version of comment content')
+    )
+    
+    edited_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        verbose_name=_('Edited By')
+    )
+    
+    edited_at = models.DateTimeField(_('Edited At'), auto_now_add=True)
+    
+    # Snapshot of comment state at time of edit
+    was_public = models.BooleanField(_('Was Public'), default=True)
+    was_removed = models.BooleanField(_('Was Removed'), default=False)
+    
+    class Meta:
+        verbose_name = _('Comment Revision')
+        verbose_name_plural = _('Comment Revisions')
+        ordering = ['-edited_at']
+        indexes = [
+            models.Index(fields=['comment_type', 'comment_id']),
+            models.Index(fields=['edited_at']),
+        ]
+    
+    def __str__(self):
+        return _("Revision of comment {comment_id} at {date}").format(
+            comment_id=self.comment_id,
+            date=self.edited_at.strftime('%Y-%m-%d %H:%M')
+        )
+
+
+# ============================================================================
+# MODERATION ACTION - NEW
+# ============================================================================
+
+class ModerationAction(models.Model):
+    """
+    Log all moderation actions for accountability.
+    Tracks who did what and when.
+    """
+    ACTION_CHOICES = (
+        ('approved', _('Approved')),
+        ('rejected', _('Rejected')),
+        ('deleted', _('Deleted')),
+        ('edited', _('Edited')),
+        ('flagged', _('Flagged')),
+        ('unflagged', _('Unflagged')),
+        ('banned_user', _('Banned User')),
+        ('unbanned_user', _('Unbanned User')),
+    )
+    
+    # GenericForeignKey to support both Comment types
+    comment_type = models.ForeignKey(
+        ContentType,
+        on_delete=models.CASCADE,
+        verbose_name=_('Comment Type'),
+        null=True,
+        blank=True
+    )
+    comment_id = models.TextField(_('Comment ID'), blank=True)
+    comment = GenericForeignKey('comment_type', 'comment_id')
+    
+    moderator = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        verbose_name=_('Moderator'),
+        related_name='moderation_actions'
+    )
+    
+    action = models.CharField(
+        _('Action'),
+        max_length=20,
+        choices=ACTION_CHOICES
+    )
+    
+    reason = models.TextField(
+        _('Reason'),
+        blank=True,
+        help_text=_('Reason for this action')
+    )
+    
+    # For ban actions
+    affected_user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        verbose_name=_('Affected User'),
+        related_name='moderation_actions_received'
+    )
+    
+    timestamp = models.DateTimeField(_('Timestamp'), auto_now_add=True)
+    
+    # Additional metadata
+    ip_address = models.GenericIPAddressField(
+        _('IP Address'),
+        blank=True,
+        null=True
+    )
+    
+    class Meta:
+        verbose_name = _('Moderation Action')
+        verbose_name_plural = _('Moderation Actions')
+        ordering = ['-timestamp']
+        indexes = [
+            models.Index(fields=['comment_type', 'comment_id']),
+            models.Index(fields=['moderator', 'action']),
+            models.Index(fields=['timestamp']),
+        ]
+    
+    def __str__(self):
+        return _("{moderator} {action} at {time}").format(
+            moderator=self.moderator.get_username() if self.moderator else 'System',
+            action=self.get_action_display(),
+            time=self.timestamp.strftime('%Y-%m-%d %H:%M')
+        )
