@@ -125,11 +125,23 @@ def get_commentable_content_types() -> List[ContentType]:
 
 
 def get_model_from_content_type_string(content_type_str: str) -> Optional[Type[models.Model]]:
-    """Convert a string like 'app_label.ModelName' to a model class."""
+    """
+    Convert a string like 'app_label.ModelName' to a model class.
+    Handles case-insensitive model names since Django's ContentType uses lowercase.
+    """
     try:
+        # Try as-is first
         return apps.get_model(content_type_str)
-    except (ValueError, LookupError) as e:
-        logger.error(f"Invalid content type string: {content_type_str}. Error: {e}")
+    except (ValueError, LookupError):
+        # Try with lowercase model name
+        if '.' in content_type_str:
+            app_label, model_name = content_type_str.split('.', 1)
+            try:
+                return apps.get_model(app_label, model_name.lower())
+            except (ValueError, LookupError):
+                pass
+        
+        logger.error(f"Invalid content type string: {content_type_str}")
         return None
 
 

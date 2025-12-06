@@ -19,6 +19,8 @@ from ..utils import (
     log_moderation_action,
     check_user_banned,
 )
+from django.db import transaction
+from django.utils import timezone
 from django.db.models import Count, Q, Prefetch
 from rest_framework import status
 from ..drf_integration import get_comment_pagination_class
@@ -379,7 +381,7 @@ class CommentViewSet(viewsets.ModelViewSet):
                 approved_count += 1
         
         return Response({
-            'detail': _(f"Successfully approved {approved_count} comments."),
+            'detail': _("Successfully approved {count} comments.").format(count=approved_count),
             'approved_count': approved_count
         })
 
@@ -425,10 +427,12 @@ class CommentViewSet(viewsets.ModelViewSet):
                 rejected_count += 1
         
         return Response({
-            'detail': _(f"Successfully rejected {rejected_count} comments."),
+            'detail': _("Successfully rejected {count} comments.").format(count=rejected_count),
             'rejected_count': rejected_count
         })
 
+
+    
 
     @action(detail=False, methods=['post'], permission_classes=[IsAuthenticated])
     def bulk_delete(self, request):
@@ -452,8 +456,8 @@ class CommentViewSet(viewsets.ModelViewSet):
             )
         
         # Log before deleting
-        comments = Comment.objects.filter(pk__in=comment_ids)
-        for comment in comments:
+        comments_to_log = Comment.objects.filter(pk__in=comment_ids)
+        for comment in comments_to_log:
             log_moderation_action(
                 comment=comment,
                 moderator=request.user,
@@ -461,13 +465,14 @@ class CommentViewSet(viewsets.ModelViewSet):
                 reason=reason
             )
         
-        deleted_count, _ = comments.delete()
+        # Create a fresh queryset for deletion
+        comments_to_delete = Comment.objects.filter(pk__in=comment_ids)
+        deleted_count, details = comments_to_delete.delete()
         
         return Response({
-            'detail': _(f"Successfully deleted {deleted_count} comments."),
+            'detail': _("Successfully deleted {count} comments.").format(count=deleted_count),
             'deleted_count': deleted_count
         })
-
 
     @action(detail=False, methods=['get'], permission_classes=[IsAuthenticated])
     def flag_stats(self, request):
