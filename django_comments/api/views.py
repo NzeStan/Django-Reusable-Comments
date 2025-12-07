@@ -19,15 +19,15 @@ from ..utils import (
     log_moderation_action,
     check_user_banned,
 )
-from django.db import transaction
 from django.utils import timezone
 from django.db.models import Count, Q, Prefetch
 from rest_framework import status
-from ..drf_integration import get_comment_pagination_class
+from ..drf_integration import get_comment_pagination_class, CommentPagination
 from .serializers import (
     CommentSerializer, 
     CommentFlagSerializer,
     CreateCommentFlagSerializer,
+    BannedUserSerializer,
 )
 from .permissions import (
     CommentPermission, 
@@ -710,7 +710,7 @@ class FlagViewSet(viewsets.ReadOnlyModelViewSet):
     """
     serializer_class = CommentFlagSerializer
     permission_classes = [IsAuthenticated]
-    pagination_class = get_comment_pagination_class()
+    pagination_class = CommentPagination
     
     def get_queryset(self):
         """Only moderators can view flags."""
@@ -764,8 +764,9 @@ class BannedUserViewSet(viewsets.ModelViewSet):
     API endpoints for managing banned users.
     """
     queryset = BannedUser.objects.select_related('user', 'banned_by').order_by('-created_at')
+    serializer_class = BannedUserSerializer 
     permission_classes = [IsAuthenticated]
-    pagination_class = get_comment_pagination_class()
+    pagination_class = CommentPagination
     
     def get_permissions(self):
         """Only moderators can manage bans."""
