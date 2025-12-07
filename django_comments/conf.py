@@ -119,7 +119,18 @@ DEFAULTS = {
     'NOTIFICATION_REJECTED_TEMPLATE': 'django_comments/email/comment_rejected.html',
     'NOTIFICATION_MODERATOR_TEMPLATE': 'django_comments/email/moderator_notification.html',
     'NOTIFICATION_USER_BAN_TEMPLATE': 'django_comments/email/user_ban_notification.html',
-    'NOTIFICATION_FLAG_TEMPLATE': 'django_comments/email/user_flag_notification.html',
+    'NOTIFICATION_FLAG_TEMPLATE': 'django_comments/email/moderator_flag_notification.html',
+    
+    # Email configuration (falls back to Django settings if None)
+    'DEFAULT_FROM_EMAIL': None,  # Uses Django's DEFAULT_FROM_EMAIL if None
+    
+    # List of additional emails to notify about new comments
+    'COMMENT_NOTIFICATION_EMAILS': [],
+    
+    # Site configuration (falls back to Site framework if None)
+    'SITE_DOMAIN': None,  # Uses Site framework domain if None
+    'SITE_NAME': None,  # Uses Site framework name if None
+    'USE_HTTPS': True,  # Whether to use HTTPS in email links
     
     # ============================================================================
     # CLEANUP SETTINGS
@@ -234,9 +245,6 @@ DEFAULTS = {
     # Notify moderators when comment is auto-hidden
     'NOTIFY_ON_AUTO_HIDE': True,
     
-    # Email template for flag notifications
-    'NOTIFICATION_FLAG_TEMPLATE': 'django_comments/email/moderator_flag_notification.html',
-    
     # ============================================================================
     # COMMENT EDITING
     # ============================================================================
@@ -300,6 +308,18 @@ class CommentsSettings:
         
         # Get the setting from user settings or use the default
         value = self.user_settings.get(attr, self.defaults[attr])
+        
+        # Special handling for settings that fall back to Django settings
+        if attr == 'DEFAULT_FROM_EMAIL' and value is None:
+            return getattr(settings, 'DEFAULT_FROM_EMAIL', 'noreply@example.com')
+        
+        if attr == 'SITE_DOMAIN' and value is None:
+            # Will be handled by Site framework in notifications
+            return None
+        
+        if attr == 'SITE_NAME' and value is None:
+            # Will be handled by Site framework in notifications
+            return None
         
         # Special handling for SPAM_DETECTOR
         if attr == 'SPAM_DETECTOR' and value:

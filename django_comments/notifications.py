@@ -4,7 +4,6 @@ from django.core.mail import send_mail, EmailMultiAlternatives
 from django.template.loader import render_to_string
 from django.contrib.sites.models import Site
 from django.utils.translation import gettext_lazy as _
-from django.conf import settings
 from .conf import comments_settings
 
 logger = logging.getLogger(comments_settings.LOGGER_NAME)
@@ -15,7 +14,7 @@ class CommentNotificationService:
     
     def __init__(self):
         self.enabled = comments_settings.SEND_NOTIFICATIONS
-        self.from_email = getattr(settings, 'DEFAULT_FROM_EMAIL', 'noreply@example.com')
+        self.from_email = comments_settings.DEFAULT_FROM_EMAIL
     
     def notify_new_comment(self, comment):
         """
@@ -231,11 +230,7 @@ class CommentNotificationService:
                 recipients.append(user.email)
         
         # Strategy 2: Use configured notification emails
-        notification_emails = getattr(
-            settings,
-            'COMMENT_NOTIFICATION_EMAILS',
-            []
-        )
+        notification_emails = comments_settings.COMMENT_NOTIFICATION_EMAILS
         recipients.extend(notification_emails)
         
         # Remove duplicates and exclude comment author
@@ -267,20 +262,24 @@ class CommentNotificationService:
     
     def _get_notification_context(self, comment) -> dict:
         """Build context dictionary for email templates."""
+        # Try to get site info
         try:
             site = Site.objects.get_current()
             domain = site.domain
             site_name = site.name
         except Exception:
-            domain = getattr(settings, 'SITE_DOMAIN', 'example.com')
-            site_name = getattr(settings, 'SITE_NAME', 'Our Site')
+            # Fallback to configured values
+            domain = comments_settings.SITE_DOMAIN or 'example.com'
+            site_name = comments_settings.SITE_NAME or 'Our Site'
+        
+        protocol = 'https' if comments_settings.USE_HTTPS else 'http'
         
         return {
             'comment': comment,
             'content_object': comment.content_object,
             'site_name': site_name,
             'domain': domain,
-            'protocol': 'https' if getattr(settings, 'USE_HTTPS', True) else 'http',
+            'protocol': protocol,
         }
     
     def _send_notification_email(
@@ -455,22 +454,10 @@ def notify_user_banned(ban):
         
         recipients = [ban.user.email]
         
-        # Build context
-        try:
-            site = Site.objects.get_current()
-            domain = site.domain
-            site_name = site.name
-        except Exception:
-            domain = getattr(settings, 'SITE_DOMAIN', 'example.com')
-            site_name = getattr(settings, 'SITE_NAME', 'Our Site')
-        
-        context = {
-            'ban': ban,
-            'user': ban.user,
-            'site_name': site_name,
-            'domain': domain,
-            'protocol': 'https' if getattr(settings, 'USE_HTTPS', True) else 'http',
-        }
+        # Build context using the service method
+        context = notification_service._get_notification_context(None)
+        context['ban'] = ban
+        context['user'] = ban.user
         
         if ban.banned_until:
             subject = _("Your commenting privileges have been suspended until {date}").format(
@@ -479,13 +466,10 @@ def notify_user_banned(ban):
         else:
             subject = _("Your commenting privileges have been permanently suspended")
         
-        # Note: You'll need to create this template
-        template = 'django_comments/email/user_banned.html'
-        
         notification_service._send_notification_email(
             recipients=recipients,
             subject=subject,
-            template=template,
+            template=comments_settings.NOTIFICATION_USER_BAN_TEMPLATE,
             context=context
         )
         
