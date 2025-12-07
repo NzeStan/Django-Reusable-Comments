@@ -4,6 +4,7 @@ from django.core.mail import send_mail, EmailMultiAlternatives
 from django.template.loader import render_to_string
 from django.contrib.sites.models import Site
 from django.utils.translation import gettext_lazy as _
+from django.utils import timezone
 from .conf import comments_settings
 
 logger = logging.getLogger(comments_settings.LOGGER_NAME)
@@ -497,5 +498,51 @@ def notify_user_banned(ban):
         
     except Exception as e:
         logger.error(f"Failed to send ban notification: {e}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
+
+
+def notify_user_unbanned(user, unbanned_by=None, original_ban_reason=''):
+    """
+    Notify user that they have been unbanned.
+    
+    Args:
+        user: User instance
+        unbanned_by: User who lifted the ban (optional)
+        original_ban_reason: The reason for the original ban
+    """
+    if not comments_settings.SEND_NOTIFICATIONS:
+        return
+    
+    try:
+        if not user.email:
+            logger.debug(f"User {user.pk} has no email, skipping unban notification")
+            return
+        
+        recipients = [user.email]
+        
+        context = notification_service._get_notification_context(None)
+        
+        # Add unban-specific context
+        context['user'] = user
+        context['unbanned_by'] = unbanned_by
+        context['original_ban_reason'] = original_ban_reason
+        context['unban_date'] = timezone.now()
+        
+        subject = _("Your commenting privileges have been restored on {site_name}").format(
+            site_name=context['site_name']
+        )
+        
+        notification_service._send_notification_email(
+            recipients=recipients,
+            subject=subject,
+            template=comments_settings.NOTIFICATION_USER_UNBAN_TEMPLATE,
+            context=context
+        )
+        
+        logger.info(f"Sent unban notification to user {user.pk}")
+        
+    except Exception as e:
+        logger.error(f"Failed to send unban notification: {e}")
         import traceback
         logger.error(f"Traceback: {traceback.format_exc()}")

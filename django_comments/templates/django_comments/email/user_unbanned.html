@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Commenting Privileges Restored</title>
+</head>
+<body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; background-color: #f4f4f4;">
+    <div style="max-width: 600px; margin: 20px auto; background-color: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+        <!-- Header -->
+        <div style="background: linear-gradient(135deg, #56ab2f 0%, #a8e063 100%); padding: 30px 20px; text-align: center;">
+            <div style="font-size: 48px; margin-bottom: 10px;">✅</div>
+            <h1 style="color: #ffffff; margin: 0; font-size: 24px; font-weight: 600;">
+                Commenting Privileges Restored!
+            </h1>
+        </div>
+        
+        <!-- Content -->
+        <div style="padding: 30px 20px;">
+            <p style="font-size: 16px; margin-bottom: 20px; text-align: center;">
+                Great news! Your ability to comment on <strong>{{ site_name }}</strong> has been restored.
+            </p>
+            
+            <!-- Success Message -->
+            <div style="background: #e8f5e9; padding: 20px; border-radius: 8px; margin: 25px 0; text-align: center;">
+                <div style="font-size: 36px; margin-bottom: 10px;">🎉</div>
+                <p style="margin: 0; font-size: 18px; font-weight: 600; color: #2e7d32;">
+                    You can now comment again!
+                </p>
+            </div>
+            
+            <!-- Previous Ban Info -->
+            <div style="background: #f8f9fa; padding: 15px 20px; border-radius: 4px; margin: 20px 0;">
+                <table style="width: 100%; border-collapse: collapse;">
+                    <tr>
+                        <td style="padding: 5px 0; font-weight: 600; color: #666; width: 140px;">Ban Lifted:</td>
+                        <td style="padding: 5px 0; color: #333;">{{ unban_date|date:"F d, Y \a\t g:i A" }}</td>
+                    </tr>
+                    {% if unbanned_by %}
+                    <tr>
+                        <td style="padding: 5px 0; font-weight: 600; color: #666;">Lifted By:</td>
+                        <td style="padding: 5px 0; color: #333;">{{ unbanned_by.get_full_name|default:unbanned_by.get_username }}</td>
+                    </tr>
+                    {% endif %}
+                    {% if original_ban_reason %}
+                    <tr>
+                        <td style="padding: 5px 0; font-weight: 600; color: #666;">Original Ban Reason:</td>
+                        <td style="padding: 5px 0; color: #555;">{{ original_ban_reason }}</td>
+                    </tr>
+                    {% endif %}
+                </table>
+            </div>
+            
+            <!-- What This Means -->
+            <div style="background: #e3f2fd; padding: 20px; border-radius: 4px; margin: 25px 0;">
+                <p style="margin: 0 0 15px 0; font-weight: 600; color: #1976d2;">
+                    📝 What This Means
+                </p>
+                <ul style="margin: 0; padding-left: 20px; color: #555;">
+                    <li style="margin-bottom: 8px;">You can now post new comments on all content</li>
+                    <li style="margin-bottom: 8px;">Your existing comments remain visible</li>
+                    <li style="margin-bottom: 8px;">All commenting features are available to you</li>
+                    <li>Please continue to follow our community guidelines</li>
+                </ul>
+            </div>
+            
+            <!-- Fresh Start Message -->
+            <div style="background: #fff9e6; padding: 20px; border-radius: 4px; margin: 25px 0; text-align: center;">
+                <p style="margin: 0 0 10px 0; font-weight: 600; color: #856404;">
+                    💡 Fresh Start
+                </p>
+                <p style="margin: 0; color: #856404; font-size: 14px;">
+                    We believe in second chances. Please help us maintain a positive and respectful community by following our guidelines. Welcome back!
+                </p>
+            </div>
+            
+            <!-- Community Guidelines Button -->
+            <div style="text-align: center; margin: 30px 0 20px 0;">
+                <a href="{{ protocol }}://{{ domain }}/guidelines/" 
+                   style="display: inline-block; background: #4caf50; color: #ffffff; padding: 12px 30px; text-decoration: none; border-radius: 5px; font-weight: 600; box-shadow: 0 2px 4px rgba(76, 175, 80, 0.4);">
+                    Review Community Guidelines
+                </a>
+            </div>
+            
+            <!-- Support Info -->
+            <div style="margin-top: 25px; padding-top: 20px; border-top: 1px solid #e0e0e0; font-size: 13px; color: #777; text-align: center;">
+                <p style="margin: 0;">
+                    Questions? Contact us at <a href="mailto:support@{{ domain }}" style="color: #1976d2;">support@{{ domain }}</a>
+                </p>
+            </div>
+        </div>
+        
+        <!-- Footer -->
+        <div style="background: #f8f9fa; padding: 20px; text-align: center; border-top: 1px solid #e0e0e0;">
+            <p style="margin: 0; font-size: 12px; color: #888;">
+                This is an automated notification from {{ site_name }}
+            </p>
+            <p style="margin: 10px 0 0 0; font-size: 12px; color: #888;">
+                © {{ site_name }} - All rights reserved
+            </p>
+        </div>
+    </div>
+</body>
+</html>

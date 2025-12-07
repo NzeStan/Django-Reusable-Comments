@@ -816,6 +816,10 @@ class BannedUserViewSet(viewsets.ModelViewSet):
         
         ban = self.get_object()
         
+        # Store ban info for notification before deletion
+        unbanned_user = ban.user
+        original_ban_reason = ban.reason
+        
         # Log action
         log_moderation_action(
             comment=None,
@@ -826,4 +830,15 @@ class BannedUserViewSet(viewsets.ModelViewSet):
             ip_address=request.META.get('REMOTE_ADDR')
         )
         
-        return super().destroy(request, *args, **kwargs)
+        # Delete the ban (actually unbans the user)
+        result = super().destroy(request, *args, **kwargs)
+        
+        # ✅ NEW: Send unban notification
+        from ..notifications import notify_user_unbanned
+        notify_user_unbanned(
+            user=unbanned_user,
+            unbanned_by=request.user,
+            original_ban_reason=original_ban_reason
+        )
+        
+        return result
