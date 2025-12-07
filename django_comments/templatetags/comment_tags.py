@@ -4,10 +4,11 @@ Load in templates with: {% load comment_tags %}
 """
 from django import template
 from django.contrib.contenttypes.models import ContentType
+from django.utils.safestring import mark_safe
 
 from ..cache import get_comment_count_for_object
 from ..utils import get_comment_model
-
+from ..formatting import render_comment_content  
 register = template.Library()
 Comment = get_comment_model()
 
@@ -97,6 +98,83 @@ def has_comments(obj):
         return get_comment_count_for_object(obj, public_only=True) > 0
     except Exception:
         return False
+
+@register.filter(name='format_comment')
+def format_comment(content, format_type=None):
+    """
+    Format comment content according to COMMENT_FORMAT setting.
+    
+    Usage in template:
+        {{ comment.content|format_comment }}
+        {{ comment.content|format_comment:"markdown" }}
+    
+    Args:
+        content: Comment content string
+        format_type: Optional format override ('plain', 'markdown', 'html')
+    
+    Returns:
+        Formatted and safe HTML
+    
+    Examples:
+        {# Use default format from settings #}
+        <div class="comment-content">
+            {{ comment.content|format_comment }}
+        </div>
+        
+        {# Force specific format #}
+        <div class="comment-content">
+            {{ comment.content|format_comment:"markdown" }}
+        </div>
+    """
+    try:
+        return mark_safe(render_comment_content(content, format=format_type))
+    except Exception as e:
+        # Fallback to raw content with HTML escaped
+        from django.utils.html import escape
+        import logging
+        from ..conf import comments_settings
+        
+        logger = logging.getLogger(comments_settings.LOGGER_NAME)
+        logger.error(f"Failed to format comment content: {e}")
+        return mark_safe(escape(content))
+
+
+@register.filter(name='format_comment_plain')
+def format_comment_plain(content):
+    """
+    Force format comment as plain text (HTML escaped).
+    
+    Usage in template:
+        {{ comment.content|format_comment_plain }}
+    """
+    return format_comment(content, format_type='plain')
+
+
+@register.filter(name='format_comment_markdown')
+def format_comment_markdown(content):
+    """
+    Force format comment as Markdown.
+    
+    Usage in template:
+        {{ comment.content|format_comment_markdown }}
+    
+    Note: Requires markdown package to be installed.
+    Falls back to plain text if markdown is not available.
+    """
+    return format_comment(content, format_type='markdown')
+
+
+@register.filter(name='format_comment_html')
+def format_comment_html(content):
+    """
+    Force format comment as HTML (sanitized).
+    
+    Usage in template:
+        {{ comment.content|format_comment_html }}
+    
+    Note: HTML is sanitized to prevent XSS attacks.
+    """
+    return format_comment(content, format_type='html')
 
 
 @register.inclusion_tag('django_comments/comment_count.html')

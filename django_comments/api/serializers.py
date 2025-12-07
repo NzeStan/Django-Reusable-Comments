@@ -11,6 +11,7 @@ from ..utils import (
     process_comment_content,
     apply_automatic_flags,
 )
+from ..formatting import render_comment_content 
 from django.contrib.auth import get_user_model
 
 
@@ -166,6 +167,9 @@ class CommentSerializer(serializers.ModelSerializer):
     children = RecursiveCommentSerializer(many=True, read_only=True)
     depth = serializers.IntegerField(read_only=True)
 
+    
+    formatted_content = serializers.SerializerMethodField()
+
     flags_count = serializers.IntegerField(
         source='flags_count_annotated',
         read_only=True,
@@ -183,7 +187,7 @@ class CommentSerializer(serializers.ModelSerializer):
     class Meta:
         model = Comment
         fields = (
-            'id', 'content', 'content_type', 'object_id', 'content_object_info', 
+            'id', 'content', 'formatted_content', 'content_type', 'object_id', 'content_object_info',  
             'user', 'user_info', 'user_name', 'user_email', 'user_url',
             'parent', 'children', 'depth', 'thread_id', 'children_count',
             'created_at', 'updated_at', 'is_public', 'is_removed',
@@ -191,10 +195,28 @@ class CommentSerializer(serializers.ModelSerializer):
             'moderation_actions_count',
         )
         read_only_fields = (
-            'id', 'content_object_info', 'user_info', 'children', 'thread_id',
+            'id', 'formatted_content', 'content_object_info', 'user_info', 'children', 'thread_id',  
             'depth', 'created_at', 'updated_at', 'is_flagged', 'children_count',
             'revisions_count', 'moderation_actions_count',
         )
+
+    def get_formatted_content(self, obj) -> str:
+        """
+        ✅ NEW: Return formatted comment content based on COMMENT_FORMAT setting.
+        
+        Uses the formatting module to render content as:
+        - Plain text (HTML escaped)
+        - Markdown (if markdown installed)
+        - HTML (sanitized)
+        """
+        try:
+            return render_comment_content(obj.content)
+        except Exception as e:
+            # Fallback to raw content if formatting fails
+            import logging
+            logger = logging.getLogger(comments_settings.LOGGER_NAME)
+            logger.error(f"Failed to format comment {obj.pk}: {e}")
+            return obj.content
 
     def get_revisions_count(self, obj):
         """Get count of revisions for this comment."""

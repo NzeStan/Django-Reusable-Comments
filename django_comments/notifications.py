@@ -261,7 +261,17 @@ class CommentNotificationService:
         return emails
     
     def _get_notification_context(self, comment) -> dict:
-        """Build context dictionary for email templates."""
+        """
+        Build context dictionary for email templates.
+        
+        ✅ FIXED: Now handles None comment for ban notifications.
+        
+        Args:
+            comment: Comment instance or None (for ban notifications)
+        
+        Returns:
+            dict: Context for email template
+        """
         # Try to get site info
         try:
             site = Site.objects.get_current()
@@ -274,13 +284,19 @@ class CommentNotificationService:
         
         protocol = 'https' if comments_settings.USE_HTTPS else 'http'
         
-        return {
-            'comment': comment,
-            'content_object': comment.content_object,
+        # ✅ FIXED: Build base context without comment-specific fields
+        context = {
             'site_name': site_name,
             'domain': domain,
             'protocol': protocol,
         }
+        
+        # ✅ FIXED: Only add comment fields if comment is provided
+        if comment is not None:
+            context['comment'] = comment
+            context['content_object'] = comment.content_object
+        
+        return context
     
     def _send_notification_email(
         self,
@@ -442,6 +458,8 @@ def notify_user_banned(ban):
     """
     Notify user that they have been banned.
     
+    ✅ FIXED: Now properly handles ban context without comment.
+    
     Args:
         ban: BannedUser instance
     """
@@ -450,12 +468,14 @@ def notify_user_banned(ban):
     
     try:
         if not ban.user.email:
+            logger.debug(f"User {ban.user.pk} has no email, skipping ban notification")
             return
         
         recipients = [ban.user.email]
         
-        # Build context using the service method
         context = notification_service._get_notification_context(None)
+        
+        # Add ban-specific context
         context['ban'] = ban
         context['user'] = ban.user
         
@@ -477,3 +497,5 @@ def notify_user_banned(ban):
         
     except Exception as e:
         logger.error(f"Failed to send ban notification: {e}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")

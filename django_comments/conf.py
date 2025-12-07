@@ -118,7 +118,7 @@ DEFAULTS = {
     'NOTIFICATION_APPROVED_TEMPLATE': 'django_comments/email/comment_approved.html',
     'NOTIFICATION_REJECTED_TEMPLATE': 'django_comments/email/comment_rejected.html',
     'NOTIFICATION_MODERATOR_TEMPLATE': 'django_comments/email/moderator_notification.html',
-    'NOTIFICATION_USER_BAN_TEMPLATE': 'django_comments/email/user_ban_notification.html',
+    'NOTIFICATION_USER_BAN_TEMPLATE': 'django_comments/email/user_banned.html',
     'NOTIFICATION_FLAG_TEMPLATE': 'django_comments/email/moderator_flag_notification.html',
     
     # Email configuration (falls back to Django settings if None)
