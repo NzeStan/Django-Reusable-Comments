@@ -47,7 +47,7 @@ class ContentTypeSerializer(serializers.ModelSerializer):
 
 class CommentFlagSerializer(serializers.ModelSerializer):
     """
-    Enhanced serializer for comment flags with review status.
+    serializer for comment flags with review status.
     """
     flag_type = serializers.ChoiceField(
         source='flag',
@@ -110,8 +110,6 @@ class CreateCommentFlagSerializer(serializers.ModelSerializer):
 class RecursiveCommentSerializer(serializers.Serializer):
     """
     Serializer for handling children comments recursively with depth limiting.
-    
-    IMPROVED: Now includes max_depth to prevent performance issues.
     """
     def to_representation(self, value):
         # Get max recursion depth from context or use default
@@ -139,10 +137,6 @@ class RecursiveCommentSerializer(serializers.Serializer):
 class CommentSerializer(serializers.ModelSerializer):
     """
     Serializer for comments with support for nested comments.
-    
-    OPTIMIZED: Uses annotated fields instead of causing extra queries.
-    IMPROVED: Complete validation with spam/profanity checking.
-    IMPROVED: Depth-limited recursion for children.
     """
 
     content_type = serializers.CharField(
@@ -172,7 +166,6 @@ class CommentSerializer(serializers.ModelSerializer):
     children = RecursiveCommentSerializer(many=True, read_only=True)
     depth = serializers.IntegerField(read_only=True)
 
-    # OPTIMIZED: Use annotated values instead of causing queries
     flags_count = serializers.IntegerField(
         source='flags_count_annotated',
         read_only=True,
@@ -254,9 +247,8 @@ class CommentSerializer(serializers.ModelSerializer):
     def validate_content(self, value):
         """
         Validate that the comment content is allowed.
-        IMPROVED: Now uses comprehensive validation from utils.
         """
-        # Check max length first (more specific error message)
+        # Check max length first
         if len(value) > comments_settings.MAX_COMMENT_LENGTH:
             raise serializers.ValidationError(
                 _("Comment content exceeds maximum length of {max_length} characters.").format(
@@ -276,7 +268,6 @@ class CommentSerializer(serializers.ModelSerializer):
     def validate_object_id(self, value):
         """
         Validate object_id format if needed.
-        FIXED: Handles both string and integer inputs.
         """
         # Convert to string if it's an integer
         if isinstance(value, int):
@@ -324,7 +315,6 @@ class CommentSerializer(serializers.ModelSerializer):
         - Apply moderation settings.
         - Check bans and auto-approval.
         """
-        # Skip validation for partial updates (PATCH) that don't involve user changes
         if self.partial and 'user' not in data:
             return data
 
@@ -428,9 +418,9 @@ class CommentSerializer(serializers.ModelSerializer):
     def get_is_flagged(self, obj) -> bool:
         """
         Check if the comment has been flagged.
-        OPTIMIZED: Uses annotated flags_count_annotated to avoid query.
+        Uses annotated flags_count_annotated to avoid query.
         """
-        # Try to get from annotation first (most efficient)
+        # Try to get from annotation first 
         if hasattr(obj, 'flags_count_annotated'):
             return obj.flags_count_annotated > 0
         
@@ -441,7 +431,7 @@ class CommentSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         """
         Create a new comment with content processing.
-        IMPROVED: Now processes content for profanity and applies auto-flags.
+        Now processes content for profanity and applies auto-flags.
         """
         # Extract content_type and object_id
         content_type_str = validated_data.pop('content_type')

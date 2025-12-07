@@ -1,7 +1,3 @@
-"""
-Content formatting system for django-comments.
-Supports plain text, markdown, and HTML comment formats.
-"""
 import logging
 import bleach
 from django.utils.safestring import mark_safe

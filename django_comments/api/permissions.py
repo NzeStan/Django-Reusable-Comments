@@ -1,7 +1,6 @@
 from rest_framework import permissions
 
 from ..conf import comments_settings
-from ..utils import check_comment_permissions
 
 
 class IsOwnerOrReadOnly(permissions.BasePermission):

@@ -1,7 +1,3 @@
-"""
-Notification system for django-comments.
-Handles email notifications for new comments, replies, and moderation events.
-"""
 import logging
 from typing import List, Optional
 from django.core.mail import send_mail, EmailMultiAlternatives

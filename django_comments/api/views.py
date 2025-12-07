@@ -9,7 +9,7 @@ from rest_framework.response import Response
 from django_filters.rest_framework import DjangoFilterBackend
 from ..conf import comments_settings
 from ..exceptions import CommentModerated
-from ..models import CommentFlag, BannedUser, ModerationAction, CommentRevision
+from ..models import CommentFlag, BannedUser, CommentRevision
 from ..signals import flag_comment, approve_comment, reject_comment
 from ..utils import (
     get_comment_model,
@@ -17,10 +17,9 @@ from ..utils import (
     can_edit_comment,
     create_comment_revision,
     log_moderation_action,
-    check_user_banned,
 )
 from django.utils import timezone
-from django.db.models import Count, Q, Prefetch
+from django.db.models import Count
 from rest_framework import status
 from ..drf_integration import get_comment_pagination_class, CommentPagination
 from .serializers import (
@@ -40,7 +39,7 @@ Comment = get_comment_model()
 def get_user_groups_cached(user, request):
     """
     Get user groups with request-level caching.
-    IMPROVED: Uses request cache instead of modifying user object.
+    Uses request cache instead of modifying user object.
     """
     if not user.is_authenticated:
         return set()
@@ -63,7 +62,7 @@ class CommentViewSet(viewsets.ModelViewSet):
     """
     API endpoints for managing comments.
     Optimized with select_related, prefetch_related, and annotations.
-    IMPROVED: Now validates ordering against ALLOWED_SORTS.
+    validates ordering against ALLOWED_SORTS.
     """
     serializer_class = CommentSerializer
     permission_classes = [CommentPermission]
@@ -81,7 +80,7 @@ class CommentViewSet(viewsets.ModelViewSet):
     def get_ordering(self):
         """
         Get ordering with validation against ALLOWED_SORTS.
-        IMPROVED: Now enforces ALLOWED_SORTS setting.
+        Enforces ALLOWED_SORTS setting.
         """
         ordering = self.request.query_params.get('ordering', None)
         
@@ -104,19 +103,13 @@ class CommentViewSet(viewsets.ModelViewSet):
         queryset = Comment.objects.all()
         user = self.request.user
         
-        # ==========================================
-        # PERFORMANCE OPTIMIZATION
-        # ==========================================
-        
-        # 1. Select related foreign keys (single-value relationships)
         queryset = queryset.select_related(
-            'user',              # Comment author
-            'content_type',      # Type of commented object
-            'parent',            # Parent comment for threading
-            'parent__user'       # Parent comment's author (for nested display)
+            'user',              
+            'content_type',     
+            'parent',            
+            'parent__user'    
         )
         
-        # 2. Prefetch many-to-many and reverse foreign keys
         queryset = queryset.prefetch_related(
             models.Prefetch(
                 'flags',
@@ -124,14 +117,11 @@ class CommentViewSet(viewsets.ModelViewSet):
             )
         )
         
-        # 3. Add annotations for computed fields
-        # This prevents extra queries in serializers
         queryset = queryset.annotate(
             flags_count_annotated=models.Count('flags', distinct=True),
             children_count_annotated=models.Count('children', distinct=True)
         )
         
-        # 4. Action-specific optimizations
         if self.action == 'retrieve':
             # For detail view, also prefetch children with their users
             queryset = queryset.prefetch_related(
@@ -144,15 +134,10 @@ class CommentViewSet(viewsets.ModelViewSet):
                 )
             )
         
-        # ==========================================
-        # PERMISSION FILTERING
-        # ==========================================
-        
         if not user.is_staff and not user.is_superuser:
             can_see_non_public = False
             
             if not user.is_anonymous:
-                # Use improved caching pattern
                 user_groups = get_user_groups_cached(user, self.request)
                 
                 # Check if user is in privileged groups
@@ -220,7 +205,7 @@ class CommentViewSet(viewsets.ModelViewSet):
     def flag(self, request, pk=None):
         """
         Flag a comment as inappropriate.
-        Optimized: Uses get_object() which already has prefetched data.
+        Uses get_object() which already has prefetched data.
         """
         comment = self.get_object()
         
@@ -603,7 +588,7 @@ class ContentObjectCommentsViewSet(mixins.ListModelMixin, viewsets.GenericViewSe
     """
     API endpoint for listing comments for a specific object.
     Optimized for performance with selective prefetching.
-    IMPROVED: Now validates ordering.
+    validates ordering.
     """
     serializer_class = CommentSerializer
     permission_classes = [AllowAny]
@@ -648,10 +633,6 @@ class ContentObjectCommentsViewSet(mixins.ListModelMixin, viewsets.GenericViewSe
             content_type=content_type,
             object_id=object_id
         )
-        
-        # ==========================================
-        # PERFORMANCE OPTIMIZATION
-        # ==========================================
         queryset = queryset.select_related(
             'user',
             'content_type',
@@ -666,21 +647,15 @@ class ContentObjectCommentsViewSet(mixins.ListModelMixin, viewsets.GenericViewSe
             flags_count_annotated=models.Count('flags', distinct=True),
             children_count_annotated=models.Count('children', distinct=True)
         )
-        
-        # ==========================================
-        # PERMISSION FILTERING
-        # ==========================================
+
         user = self.request.user
         if not user.is_staff and not user.is_superuser:
             queryset = queryset.filter(is_public=True, is_removed=False)
         
-        # ==========================================
-        # THREAD TYPE FILTERING
-        # ==========================================
         thread_type = self.request.query_params.get('thread_type', 'tree')
         
         if thread_type == 'flat':
-            # Return all comments (already done)
+            # Return all comments
             pass
         elif thread_type == 'root':
             # Return only root comments
@@ -698,11 +673,6 @@ class ContentObjectCommentsViewSet(mixins.ListModelMixin, viewsets.GenericViewSe
         return queryset
     
 
-
-
-# ============================================================================
-# NEW VIEWSET: FlagViewSet
-# ============================================================================
 
 class FlagViewSet(viewsets.ReadOnlyModelViewSet):
     """
@@ -754,10 +724,6 @@ class FlagViewSet(viewsets.ReadOnlyModelViewSet):
             CommentFlagSerializer(flag).data
         )
 
-
-# ============================================================================
-# NEW VIEWSET: BannedUserViewSet
-# ============================================================================
 
 class BannedUserViewSet(viewsets.ModelViewSet):
     """

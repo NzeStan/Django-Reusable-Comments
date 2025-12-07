@@ -1,7 +1,3 @@
-"""
-Complete signals.py with email notification integration.
-This is the FULL replacement file - just copy this entire content to your signals.py
-"""
 from django.db.models.signals import pre_save, post_save, pre_delete, post_delete
 from django.dispatch import receiver, Signal
 from .conf import comments_settings

@@ -70,7 +70,7 @@ class CommentQuerySet(models.QuerySet):
     def for_model(self, model_or_instance):
         """
         Return all comments for a specific model or model instance.
-        OPTIMIZED: Includes basic optimizations.
+        Includes basic optimizations.
         """
         if isinstance(model_or_instance, models.Model):
             # It's a model instance
@@ -90,7 +90,7 @@ class CommentQuerySet(models.QuerySet):
     def public(self):
         """
         Return only public, non-removed comments.
-        OPTIMIZED: Includes basic optimizations.
+        Includes basic optimizations.
         """
         return self.filter(
             is_public=True, 
@@ -126,7 +126,7 @@ class CommentQuerySet(models.QuerySet):
     def root_nodes(self):
         """
         Return only root comments (no parent).
-        OPTIMIZED: Includes basic optimizations.
+        Includes basic optimizations.
         """
         return self.filter(
             parent__isnull=True
@@ -135,14 +135,14 @@ class CommentQuerySet(models.QuerySet):
     def by_user(self, user):
         """
         Return comments by a specific user.
-        OPTIMIZED: Includes basic optimizations.
+        Includes basic optimizations.
         """
         return self.filter(user=user).with_user_and_content_type()
     
     def by_thread(self, thread_id):
         """
         Return comments belonging to a specific thread.
-        OPTIMIZED: Includes basic optimizations.
+        Includes basic optimizations.
         """
         return self.filter(
             thread_id=thread_id
@@ -151,7 +151,7 @@ class CommentQuerySet(models.QuerySet):
     def search(self, query):
         """
         Search for comments by content or username.
-        OPTIMIZED: Includes basic optimizations.
+        Includes basic optimizations.
         """
         return self.filter(
             Q(content__icontains=query) | 
@@ -199,7 +199,6 @@ class CommentManager(models.Manager):
     def get_by_content_object(self, content_object):
         """
         Return all comments for a given object.
-        OPTIMIZED version of common query pattern.
         """
         content_type = ContentType.objects.get_for_model(content_object)
         return self.filter(
@@ -210,7 +209,6 @@ class CommentManager(models.Manager):
     def get_by_model_and_id(self, model, object_id):
         """
         Return all comments for a given model and object_id.
-        OPTIMIZED version.
         """
         content_type = ContentType.objects.get_for_model(model)
         return self.filter(

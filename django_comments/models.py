@@ -26,7 +26,6 @@ class AbstractCommentBase(models.Model):
 class BaseCommentMixin(models.Model):
     """
     All comment fields and methods.
-    Optimized save() method that avoids double database writes.
     """
     
     content_type = models.ForeignKey(
@@ -216,9 +215,7 @@ class BaseCommentMixin(models.Model):
         return self.updated_at - self.created_at > timezone.timedelta(seconds=30)
 
 
-# ============================================================================
-# CONCRETE MODELS
-# ============================================================================
+
 
 class Comment(AbstractCommentBase, BaseCommentMixin):
     """Comment with integer primary key (default)."""
@@ -303,9 +300,6 @@ class UUIDComment(AbstractCommentBase, BaseCommentMixin):
         ]
 
 
-# ============================================================================
-# COMMENT FLAG - ENHANCED
-# ============================================================================
 
 class CommentFlag(models.Model):
     """
@@ -487,10 +481,6 @@ class CommentFlag(models.Model):
         self.save(update_fields=['reviewed', 'reviewed_by', 'reviewed_at', 'review_action', 'review_notes'])
 
 
-# ============================================================================
-# BANNED USER - NEW
-# ============================================================================
-
 class BannedUser(models.Model):
     """
     Track users who are banned from commenting.
@@ -564,10 +554,6 @@ class BannedUser(models.Model):
         ).exists()
 
 
-# ============================================================================
-# COMMENT REVISION - NEW
-# ============================================================================
-
 class CommentRevision(models.Model):
     """
     Track edit history of comments.
@@ -616,9 +602,6 @@ class CommentRevision(models.Model):
         )
 
 
-# ============================================================================
-# MODERATION ACTION - NEW
-# ============================================================================
 
 class ModerationAction(models.Model):
     """

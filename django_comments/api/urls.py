@@ -1,7 +1,3 @@
-"""
-API URL configuration for django-reusable-comments.
-Provides REST API endpoints for comments, flags, and banned users.
-"""
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 
@@ -16,16 +12,6 @@ router.register(r'flags', views.FlagViewSet, basename='flag')
 router.register(r'banned-users', views.BannedUserViewSet, basename='banned-user')
 
 urlpatterns = [
-    # Router URLs (includes list, create, retrieve, update, delete)
-    # GET    /comments/
-    # POST   /comments/
-    # GET    /comments/{id}/
-    # PATCH  /comments/{id}/
-    # DELETE /comments/{id}/
-    # POST   /comments/{id}/flag/
-    # POST   /comments/{id}/approve/
-    # POST   /comments/{id}/reject/
-    # ... etc
     path('', include(router.urls)),
     
     # Additional custom endpoint for getting comments by content object

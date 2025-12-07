@@ -6,7 +6,7 @@ from django.urls import reverse
 from django.db.models import Count, Prefetch
 from django import forms
 from django import VERSION as DJANGO_VERSION
-from .models import Comment, CommentFlag
+from .models import Comment, CommentFlag, BannedUser, ModerationAction, CommentRevision
 from .utils import get_comment_model
 from .signals import approve_comment, reject_comment
 
@@ -438,3 +438,4 @@ class CommentFlagAdmin(admin.ModelAdmin):
             _('{count} flags were deleted (comments preserved).').format(count=count)
         )
     delete_flags_only.short_description = _('Delete selected flags only')
+

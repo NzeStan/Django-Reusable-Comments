@@ -1,7 +1,3 @@
-"""
-Caching utilities for django-comments package.
-Provides functions for caching comment counts and invalidating caches.
-"""
 from django.core.cache import cache
 from django.contrib.contenttypes.models import ContentType
 from django.db.models.signals import post_save, post_delete

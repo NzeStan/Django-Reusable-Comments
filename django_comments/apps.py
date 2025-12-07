@@ -1,7 +1,3 @@
-"""
-django_comments/apps.py
-Auto-configures COMMENT_MODEL based on USE_UUIDS
-"""
 from django.apps import AppConfig
 from django.conf import settings
 from django.utils.translation import gettext_lazy as _

@@ -1,15 +1,7 @@
-"""
-Django REST Framework integrations for django-comments.
-Includes throttling and pagination support.
-"""
 from rest_framework.throttling import UserRateThrottle, AnonRateThrottle
 from rest_framework.pagination import PageNumberPagination
 from .conf import comments_settings
 
-
-# ============================================================================
-# THROTTLING (Rate Limiting)
-# ============================================================================
 
 class CommentRateThrottle(UserRateThrottle):
     """
@@ -136,11 +128,6 @@ def get_comment_throttle_classes():
     
     return throttles
 
-
-# ============================================================================
-# PAGINATION
-# ============================================================================
-
 class CommentPagination(PageNumberPagination):
     """
     Pagination for comments API.
@@ -226,10 +213,6 @@ def get_comment_pagination_class():
     
     return CommentPagination
 
-
-# ============================================================================
-# INTEGRATION HELPERS
-# ============================================================================
 
 def apply_drf_integrations(viewset_class):
     """
