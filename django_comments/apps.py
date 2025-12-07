@@ -9,21 +9,14 @@ class DjangoCommentsConfig(AppConfig):
     default_auto_field = 'django.db.models.BigAutoField'
     
     def ready(self):
-        """Auto-configure and import signals."""
-        
-        # Auto-set DJANGO_COMMENTS_COMMENT_MODEL based on USE_UUIDS
-        from .conf import comments_settings
-        
-        if not hasattr(settings, 'DJANGO_COMMENTS_COMMENT_MODEL'):
-            # User hasn't explicitly set it, so we set it based on USE_UUIDS
-            if comments_settings.USE_UUIDS:
-                settings.DJANGO_COMMENTS_COMMENT_MODEL = 'django_comments.UUIDComment'
-            else:
-                settings.DJANGO_COMMENTS_COMMENT_MODEL = 'django_comments.Comment'
+        """Import signals and configure logging."""
         
         # Import signals to register handlers
         import django_comments.signals
         import django_comments.cache
+        
+        # Import conf to ensure it's initialized
+        from .conf import comments_settings
         
         # Set up logging
         import logging
@@ -38,6 +31,6 @@ class DjangoCommentsConfig(AppConfig):
             logger.addHandler(handler)
             logger.setLevel(logging.INFO)
         
-        # Log which model is being used
-        model_name = settings.DJANGO_COMMENTS_COMMENT_MODEL
-        logger.info(f'Django Comments initialized using model: {model_name}')
+        # Log which model is being used (for debugging)
+        model_path = comments_settings.comment_model_path
+        logger.info(f'Django Comments initialized using model: {model_path}')

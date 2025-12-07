@@ -7,7 +7,6 @@ from django.contrib.contenttypes.models import ContentType
 from django.core.exceptions import ImproperlyConfigured, ObjectDoesNotExist
 from django.db import models
 from .conf import comments_settings
-from django.conf import settings
 from django.utils import timezone
 from datetime import timedelta
 logger = logging.getLogger(comments_settings.LOGGER_NAME)
@@ -17,16 +16,12 @@ def get_comment_model():
     """
     Return the Comment model that is active in this project.
     
-    This checks the DJANGO_COMMENTS_COMMENT_MODEL setting, which is
-    automatically set by AppConfig.ready() based on USE_UUIDS.
+    Uses the comment_model_path from comments_settings, which is
+    automatically determined based on USE_UUIDS setting.
     
     Returns either Comment or UUIDComment.
     """
-    model_string = getattr(
-        settings,
-        'DJANGO_COMMENTS_COMMENT_MODEL',
-        'django_comments.Comment'  # Default fallback
-    )
+    model_string = comments_settings.comment_model_path
     
     try:
         return apps.get_model(model_string, require_ready=False)
@@ -42,11 +37,7 @@ def get_comment_model_path() -> str:
     Return the path to the comment model.
     Used for ForeignKey string references.
     """
-    return getattr(
-        settings,
-        'DJANGO_COMMENTS_COMMENT_MODEL',
-        'django_comments.Comment'
-    )
+    return comments_settings.comment_model_path
 
 
 def get_commentable_models() -> List[Type[models.Model]]:

@@ -1,6 +1,5 @@
 from django.conf import settings
 from django.utils.translation import gettext_lazy as _
-import warnings
 from django.core.exceptions import ImproperlyConfigured
 
 # Default settings that can be overridden by Django settings
@@ -119,6 +118,8 @@ DEFAULTS = {
     'NOTIFICATION_APPROVED_TEMPLATE': 'django_comments/email/comment_approved.html',
     'NOTIFICATION_REJECTED_TEMPLATE': 'django_comments/email/comment_rejected.html',
     'NOTIFICATION_MODERATOR_TEMPLATE': 'django_comments/email/moderator_notification.html',
+    'NOTIFICATION_USER_BAN_TEMPLATE': 'django_comments/email/user_ban_notification.html',
+    'NOTIFICATION_FLAG_TEMPLATE': 'django_comments/email/user_flag_notification.html',
     
     # ============================================================================
     # CLEANUP SETTINGS
@@ -184,14 +185,6 @@ DEFAULTS = {
     # Used by the built-in caching system for comment counts
     'CACHE_TIMEOUT': 3600,
     
-    # ============================================================================
-    # DEPRECATED SETTINGS (for backward compatibility)
-    # ============================================================================
-    
-    # DEPRECATED: Use DJANGO_COMMENTS_COMMENT_MODEL setting instead
-    # This setting is kept for backward compatibility but will be removed in 1.0
-    'COMMENT_MODEL': None,
-
     # ============================================================================
     # FLAG THRESHOLDS & AUTO-MODERATION
     # ============================================================================
@@ -300,24 +293,7 @@ class CommentsSettings:
         self.user_settings = user_settings or {}
         self.defaults = defaults or DEFAULTS
         self._spam_detector_cache = None
-        
-        # Handle deprecated COMMENT_MODEL setting
-        self._handle_deprecated_settings()
-        
-    def _handle_deprecated_settings(self):
-        """Handle deprecated settings with warnings."""
-        if 'COMMENT_MODEL' in self.user_settings and self.user_settings['COMMENT_MODEL']:
-            warnings.warn(
-                "DJANGO_COMMENTS_CONFIG['COMMENT_MODEL'] is deprecated. "
-                "Use DJANGO_COMMENTS_COMMENT_MODEL setting instead. "
-                "This will be removed in version 1.0.",
-                DeprecationWarning,
-                stacklevel=2
-            )
-            # Set the new setting if not already set
-            if not hasattr(settings, 'DJANGO_COMMENTS_COMMENT_MODEL'):
-                settings.DJANGO_COMMENTS_COMMENT_MODEL = self.user_settings['COMMENT_MODEL']
-        
+    
     def __getattr__(self, attr):
         if attr not in self.defaults:
             raise AttributeError(f"Invalid django-comments setting: '{attr}'")
@@ -375,6 +351,25 @@ class CommentsSettings:
                 f"Error loading spam detector '{detector_path}': {e}"
             )
         
+    @property
+    def comment_model_path(self):
+        """
+        Get the full model path for the Comment model.
+        Computed based on USE_UUIDS setting.
+        
+        Returns:
+            str: Model path (e.g., 'django_comments.Comment' or 'django_comments.UUIDComment')
+        """
+        # Check if user explicitly set DJANGO_COMMENTS_COMMENT_MODEL
+        if hasattr(settings, 'DJANGO_COMMENTS_COMMENT_MODEL'):
+            return settings.DJANGO_COMMENTS_COMMENT_MODEL
+        
+        # Otherwise, compute from USE_UUIDS
+        if self.USE_UUIDS:
+            return 'django_comments.UUIDComment'
+        else:
+            return 'django_comments.Comment'
+    
     @property
     def as_dict(self):
         """
@@ -434,6 +429,8 @@ class CommentsSettings:
                 'NOTIFICATION_APPROVED_TEMPLATE',
                 'NOTIFICATION_REJECTED_TEMPLATE',
                 'NOTIFICATION_MODERATOR_TEMPLATE',
+                'NOTIFICATION_USER_BAN_TEMPLATE',
+                'NOTIFICATION_FLAG_TEMPLATE',
             ]
             for template_setting in required_templates:
                 if not getattr(self, template_setting):
