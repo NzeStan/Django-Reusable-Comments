@@ -138,6 +138,9 @@ class RecursiveCommentSerializer(serializers.Serializer):
 class CommentSerializer(serializers.ModelSerializer):
     """
     Serializer for comments with support for nested comments.
+    
+    ✅ SECURITY: is_public and is_removed are READ-ONLY
+    Only moderators can change these via approve/reject endpoints.
     """
 
     content_type = serializers.CharField(
@@ -155,7 +158,6 @@ class CommentSerializer(serializers.ModelSerializer):
     user = serializers.HiddenField(default=serializers.CurrentUserDefault())
     user_name = serializers.CharField(required=False, allow_blank=True)
     user_email = serializers.EmailField(required=False, allow_blank=True)
-    user_url = serializers.URLField(required=False, allow_blank=True)
     user_info = UserSerializer(source='user', read_only=True)
 
     parent = serializers.PrimaryKeyRelatedField(
@@ -188,7 +190,7 @@ class CommentSerializer(serializers.ModelSerializer):
         model = Comment
         fields = (
             'id', 'content', 'formatted_content', 'content_type', 'object_id', 'content_object_info',  
-            'user', 'user_info', 'user_name', 'user_email', 'user_url',
+            'user', 'user_info', 'user_name', 'user_email',
             'parent', 'children', 'depth', 'thread_id', 'children_count',
             'created_at', 'updated_at', 'is_public', 'is_removed',
             'flags_count', 'is_flagged', 'revisions_count',
@@ -198,6 +200,7 @@ class CommentSerializer(serializers.ModelSerializer):
             'id', 'formatted_content', 'content_object_info', 'user_info', 'children', 'thread_id',  
             'depth', 'created_at', 'updated_at', 'is_flagged', 'children_count',
             'revisions_count', 'moderation_actions_count',
+            'is_public', 'is_removed',  # ✅ SECURITY: Only moderators can change these
         )
 
     def get_formatted_content(self, obj) -> str:
@@ -323,7 +326,16 @@ class CommentSerializer(serializers.ModelSerializer):
         - Autofill user data for authenticated users.
         - Apply moderation settings.
         - Check bans and auto-approval.
+        
+        ✅ SECURITY FIX: 
+        - Ignore any user-provided is_public/is_removed values
+        - Always apply moderation logic server-side
         """
+        # ✅ SECURITY: Remove any user-provided is_public/is_removed
+        # These should ONLY be set by the system or moderators
+        data.pop('is_public', None)
+        data.pop('is_removed', None)
+        
         if self.partial and 'user' not in data:
             return data
 
@@ -337,6 +349,9 @@ class CommentSerializer(serializers.ModelSerializer):
 
         is_anonymous = not user
 
+        # -----------------------------------------
+        # 👤 Handle anonymous vs authenticated
+        # -----------------------------------------
         if is_anonymous:
             if not comments_settings.ALLOW_ANONYMOUS:
                 raise serializers.ValidationError(
@@ -355,7 +370,6 @@ class CommentSerializer(serializers.ModelSerializer):
             # Authenticated: autofill from request.user
             data["user_name"] = user.get_full_name() or user.get_username()
             data["user_email"] = user.email
-            data["user_url"] = self.get_user_url(user)
 
         # -----------------------------------------
         # 🚫 Check if user is banned
@@ -386,28 +400,35 @@ class CommentSerializer(serializers.ModelSerializer):
                     })
 
         # -----------------------------------------
-        # ⭐ Auto-approve certain trusted users
+        # 🔒 Apply moderation logic (NEW COMMENTS ONLY)
+        # ✅ SECURITY FIX: Properly enforce MODERATOR_REQUIRED
         # -----------------------------------------
-        if user_is_authenticated and not self.instance:
-            from ..utils import should_auto_approve_user
-            if should_auto_approve_user(user):
-                data["is_public"] = True  # Override moderation requirement
-
-        # -----------------------------------------
-        # 🔒 Apply moderation for new comments
-        # -----------------------------------------
-        if not self.instance and comments_settings.MODERATOR_REQUIRED and "is_public" not in data:
-            data["is_public"] = False
+        if not self.instance:  # Only for new comments
+            # Default: moderation required
+            is_public = False
+            
+            # Check if user is trusted and can bypass moderation
+            if user_is_authenticated:
+                from ..utils import should_auto_approve_user
+                if should_auto_approve_user(user):
+                    is_public = True
+                    import logging
+                    logger = logging.getLogger(comments_settings.LOGGER_NAME)
+                    logger.info(f"Auto-approved comment by trusted user {user.pk}")
+            
+            # If moderation is not required globally, approve by default
+            if not comments_settings.MODERATOR_REQUIRED:
+                is_public = True
+            
+            # ✅ Set is_public based on our server-side logic
+            # This CANNOT be overridden by user input
+            data["is_public"] = is_public
+            
+            # ✅ New comments are never removed by default
+            data["is_removed"] = False
 
         return data
 
-
-    def get_user_url(self, user):
-        """
-        Hook to allow host project to define how user_url is derived.
-        Override or extend this in your project.
-        """
-        return getattr(user, "url", "")
 
     def get_content_object_info(self, obj) -> Optional[Dict[str, Any]]:
         """
@@ -441,6 +462,8 @@ class CommentSerializer(serializers.ModelSerializer):
         """
         Create a new comment with content processing.
         Now processes content for profanity and applies auto-flags.
+        
+        ✅ SECURITY: is_public and is_removed are already set by validate()
         """
         # Extract content_type and object_id
         content_type_str = validated_data.pop('content_type')
@@ -481,9 +504,14 @@ class CommentSerializer(serializers.ModelSerializer):
         - parent: The parent comment (for threading structure)
         - thread_id: The thread identifier
         - path: The materialized path for tree structure
+        - is_public: Can only be changed via approve/reject endpoints
+        - is_removed: Can only be changed via moderator actions
         """
         # Remove immutable fields that should never be updated
-        immutable_fields = ['content_type', 'object_id', 'parent', 'thread_id', 'path']
+        immutable_fields = [
+            'content_type', 'object_id', 'parent', 'thread_id', 'path',
+            'is_public', 'is_removed'  # ✅ SECURITY: Only moderators can change these
+        ]
         for field in immutable_fields:
             validated_data.pop(field, None)
         

@@ -13,25 +13,14 @@ from .signals import approve_comment, reject_comment
 
 
 class CommentAdminForm(forms.ModelForm):
-    """Custom form for Comment admin to handle URLField assume_scheme.
-
-    This is backwards-compatible: `assume_scheme` is used only when running
-    on Django 5.0+ where the kwarg is supported.
     """
-
-    _url_kwargs = {
-        'required': False,
-        'label': _('User URL'),
-    }
-
-    if DJANGO_VERSION >= (5, 0):
-        _url_kwargs['assume_scheme'] = 'https'
-
-    user_url = forms.URLField(**_url_kwargs)
+    Custom form for Comment admin.
+    """
 
     class Meta:
         model = Comment
         fields = '__all__'
+
 
 
 class FlaggedCommentsFilter(admin.SimpleListFilter):
@@ -112,7 +101,7 @@ class CommentAdmin(admin.ModelAdmin):
             'fields': ('content_type', 'object_id', 'content_object_link')
         }),
         (_('User Info'), {
-            'fields': ('user', 'user_name', 'user_email', 'user_url', 'ip_address', 'user_agent')
+            'fields': ('user', 'user_name', 'user_email', 'ip_address', 'user_agent')
         }),
         (_('Status'), {
             'fields': ('is_public', 'is_removed', 'created_at', 'updated_at')

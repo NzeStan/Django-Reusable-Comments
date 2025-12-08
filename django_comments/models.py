@@ -53,7 +53,6 @@ class BaseCommentMixin(models.Model):
     
     user_name = models.CharField(_('User name'), max_length=100, blank=True)
     user_email = models.EmailField(_('User email'), blank=True)
-    user_url = models.URLField(_('User URL'), blank=True)
     ip_address = models.GenericIPAddressField(_('IP address'), blank=True, null=True)
     user_agent = models.TextField(_('User agent'), blank=True)
     content = models.TextField(_('Content'))
