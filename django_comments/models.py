@@ -35,7 +35,12 @@ class BaseCommentMixin(models.Model):
         related_name='%(app_label)s_%(class)s_comments'
     )
     
-    object_id = models.TextField(_('Object ID'))
+    # ✅ CharField handles BOTH integer and UUID object IDs
+    object_id = models.CharField(
+        _('Object ID'),
+        max_length=255,
+        db_index=True
+    )
     content_object = GenericForeignKey('content_type', 'object_id')
     
     user = models.ForeignKey(
@@ -215,48 +220,17 @@ class BaseCommentMixin(models.Model):
         return self.updated_at - self.created_at > timezone.timedelta(seconds=30)
 
 
-
+# ============================================================================
+# ✅ SINGLE COMMENT MODEL - UUID Primary Key
+# ============================================================================
 
 class Comment(AbstractCommentBase, BaseCommentMixin):
-    """Comment with integer primary key (default)."""
+    """
+    Comment model with UUID primary key.
     
-    parent = models.ForeignKey(
-        'self',
-        on_delete=models.CASCADE,
-        verbose_name=_('Parent comment'),
-        blank=True,
-        null=True,
-        related_name='children'
-    )
-    
-    flags = GenericRelation(
-        'CommentFlag',
-        content_type_field='comment_type',
-        object_id_field='comment_id',
-        related_query_name='comment'
-    )
-
-    objects = CommentManager.from_queryset(CommentQuerySet)()
-    
-    class Meta:
-        swappable = 'DJANGO_COMMENTS_COMMENT_MODEL'
-        verbose_name = _('Comment')
-        verbose_name_plural = _('Comments')
-        ordering = ('-created_at',)
-        permissions = [('can_moderate_comments', _('Can moderate comments'))]
-        indexes = [
-            models.Index(fields=['content_type', 'object_id']),
-            models.Index(fields=['created_at']),
-            models.Index(fields=['is_public', 'is_removed']),
-            models.Index(fields=['parent']),
-            models.Index(fields=['user']),
-            models.Index(fields=['thread_id']),
-            models.Index(fields=['path']),
-        ]
-
-
-class UUIDComment(AbstractCommentBase, BaseCommentMixin):
-    """Comment with UUID primary key."""
+    Works with ANY model that has ANY primary key type (int, UUID, custom).
+    The object_id CharField handles all PK types by storing them as strings.
+    """
     
     id = models.UUIDField(
         primary_key=True,
@@ -278,15 +252,14 @@ class UUIDComment(AbstractCommentBase, BaseCommentMixin):
         'CommentFlag',
         content_type_field='comment_type',
         object_id_field='comment_id',
-        related_query_name='uuidcomment'
+        related_query_name='comment'
     )
 
     objects = CommentManager.from_queryset(CommentQuerySet)()
     
     class Meta:
-        swappable = 'DJANGO_COMMENTS_COMMENT_MODEL'
-        verbose_name = _('Comment (UUID)')
-        verbose_name_plural = _('Comments (UUID)')
+        verbose_name = _('Comment')
+        verbose_name_plural = _('Comments')
         ordering = ('-created_at',)
         permissions = [('can_moderate_comments', _('Can moderate comments'))]
         indexes = [
@@ -300,11 +273,13 @@ class UUIDComment(AbstractCommentBase, BaseCommentMixin):
         ]
 
 
+# ============================================================================
+# COMMENT FLAG MODEL
+# ============================================================================
 
 class CommentFlag(models.Model):
     """
     Records user flags for comments that may be inappropriate.
-    ENHANCED: Now includes review status and better categorization.
     """
     
     FLAG_CHOICES = (
@@ -324,16 +299,17 @@ class CommentFlag(models.Model):
     created_at = models.DateTimeField(_('Created at'), auto_now_add=True)
     updated_at = models.DateTimeField(_('Updated at'), auto_now=True)
     
-    # GenericForeignKey to comment (works with both Comment types)
+    # GenericForeignKey to comment
     comment_type = models.ForeignKey(
         ContentType,
         on_delete=models.CASCADE,
         verbose_name=_('Comment Type'),
         help_text=_('The type of comment being flagged')
     )
-    comment_id = models.TextField(
+    comment_id = models.CharField(
         _('Comment ID'),
-        help_text=_('The ID of the comment (can be integer or UUID)')
+        max_length=255,
+        help_text=_('The ID of the comment (supports both integer and UUID)')
     )
     comment = GenericForeignKey('comment_type', 'comment_id')
     
@@ -361,7 +337,7 @@ class CommentFlag(models.Model):
         help_text=_('Optional reason for flagging')
     )
     
-    # Review status (NEW)
+    # Review status
     reviewed = models.BooleanField(
         _('Reviewed'),
         default=False,
@@ -481,6 +457,10 @@ class CommentFlag(models.Model):
         self.save(update_fields=['reviewed', 'reviewed_by', 'reviewed_at', 'review_action', 'review_notes'])
 
 
+# ============================================================================
+# BANNED USER MODEL
+# ============================================================================
+
 class BannedUser(models.Model):
     """
     Track users who are banned from commenting.
@@ -521,7 +501,7 @@ class BannedUser(models.Model):
         verbose_name_plural = _('Banned Users')
         ordering = ['-created_at']
         indexes = [
-            models.Index(fields=['user', 'banned_until']),
+            models.Index(fields=['user', 'banned_until'], name='django_comm_user_id_ban_idx'),
         ]
     
     def __str__(self):
@@ -554,18 +534,22 @@ class BannedUser(models.Model):
         ).exists()
 
 
+# ============================================================================
+# COMMENT REVISION MODEL
+# ============================================================================
+
 class CommentRevision(models.Model):
     """
     Track edit history of comments.
     Stores previous versions for audit trail.
     """
-    # GenericForeignKey to support both Comment types
+    # GenericForeignKey to support Comment
     comment_type = models.ForeignKey(
         ContentType,
         on_delete=models.CASCADE,
         verbose_name=_('Comment Type')
     )
-    comment_id = models.TextField(_('Comment ID'))
+    comment_id = models.CharField(_('Comment ID'), max_length=255)
     comment = GenericForeignKey('comment_type', 'comment_id')
     
     content = models.TextField(
@@ -591,8 +575,8 @@ class CommentRevision(models.Model):
         verbose_name_plural = _('Comment Revisions')
         ordering = ['-edited_at']
         indexes = [
-            models.Index(fields=['comment_type', 'comment_id']),
-            models.Index(fields=['edited_at']),
+            models.Index(fields=['comment_type', 'comment_id'], name='commentrev_comment_idx'),
+            models.Index(fields=['edited_at'], name='commentrev_edited_idx'),
         ]
     
     def __str__(self):
@@ -602,6 +586,9 @@ class CommentRevision(models.Model):
         )
 
 
+# ============================================================================
+# MODERATION ACTION MODEL
+# ============================================================================
 
 class ModerationAction(models.Model):
     """
@@ -619,7 +606,7 @@ class ModerationAction(models.Model):
         ('unbanned_user', _('Unbanned User')),
     )
     
-    # GenericForeignKey to support both Comment types
+    # GenericForeignKey to support Comment
     comment_type = models.ForeignKey(
         ContentType,
         on_delete=models.CASCADE,
@@ -627,7 +614,7 @@ class ModerationAction(models.Model):
         null=True,
         blank=True
     )
-    comment_id = models.TextField(_('Comment ID'), blank=True)
+    comment_id = models.CharField(_('Comment ID'), max_length=255, blank=True)
     comment = GenericForeignKey('comment_type', 'comment_id')
     
     moderator = models.ForeignKey(
@@ -674,9 +661,9 @@ class ModerationAction(models.Model):
         verbose_name_plural = _('Moderation Actions')
         ordering = ['-timestamp']
         indexes = [
-            models.Index(fields=['comment_type', 'comment_id']),
-            models.Index(fields=['moderator', 'action']),
-            models.Index(fields=['timestamp']),
+            models.Index(fields=['comment_type', 'comment_id'], name='modaction_comment_idx'),
+            models.Index(fields=['moderator', 'action'], name='modaction_mod_idx'),
+            models.Index(fields=['timestamp'], name='modaction_time_idx'),
         ]
     
     def __str__(self):

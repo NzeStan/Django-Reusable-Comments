@@ -289,23 +289,10 @@ class CommentSerializer(serializers.ModelSerializer):
     
     def validate_object_id(self, value):
         """
-        Validate object_id format if needed.
+        Just convert to string.
+        The CharField handles both integer and UUID PKs automatically.
         """
-        # Convert to string if it's an integer
-        if isinstance(value, int):
-            value = str(value)
-        
-        # If you want to ensure it's a valid UUID when USE_UUIDS is True
-        if comments_settings.USE_UUIDS:
-            import uuid
-            try:
-                # Now value is guaranteed to be a string
-                uuid.UUID(value)
-            except (ValueError, AttributeError) as e:
-                raise serializers.ValidationError(
-                    f"Invalid UUID format: {str(e)}"
-                )
-        return value
+        return str(value)
     
     def validate_content_type(self, value):
         """

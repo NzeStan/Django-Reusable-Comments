@@ -12,10 +12,6 @@ DEFAULTS = {
     # Format: ['app_label.ModelName', 'another_app.AnotherModel']
     'COMMENTABLE_MODELS': [],
     
-    # Whether to use UUIDs for primary keys (False = integer PKs, True = UUID PKs)
-    # WARNING: Changing this on existing database will break everything
-    'USE_UUIDS': False,
-    
     # ============================================================================
     # MODERATION SETTINGS
     # ============================================================================
@@ -371,25 +367,6 @@ class CommentsSettings:
             raise ImproperlyConfigured(
                 f"Error loading spam detector '{detector_path}': {e}"
             )
-        
-    @property
-    def comment_model_path(self):
-        """
-        Get the full model path for the Comment model.
-        Computed based on USE_UUIDS setting.
-        
-        Returns:
-            str: Model path (e.g., 'django_comments.Comment' or 'django_comments.UUIDComment')
-        """
-        # Check if user explicitly set DJANGO_COMMENTS_COMMENT_MODEL
-        if hasattr(settings, 'DJANGO_COMMENTS_COMMENT_MODEL'):
-            return settings.DJANGO_COMMENTS_COMMENT_MODEL
-        
-        # Otherwise, compute from USE_UUIDS
-        if self.USE_UUIDS:
-            return 'django_comments.UUIDComment'
-        else:
-            return 'django_comments.Comment'
     
     @property
     def as_dict(self):

@@ -9,35 +9,26 @@ from django.db import models
 from .conf import comments_settings
 from django.utils import timezone
 from datetime import timedelta
+
 logger = logging.getLogger(comments_settings.LOGGER_NAME)
 
 
 def get_comment_model():
     """
-    Return the Comment model that is active in this project.
+    Return the Comment model.
     
-    Uses the comment_model_path from comments_settings, which is
-    automatically determined based on USE_UUIDS setting.
+    ✅ SIMPLIFIED: Always returns django_comments.Comment (UUID-based).
+    No more USE_UUIDS logic - we only have one model now.
     
-    Returns either Comment or UUIDComment.
+    Returns:
+        Comment model class
     """
-    model_string = comments_settings.comment_model_path
-    
     try:
-        return apps.get_model(model_string, require_ready=False)
+        return apps.get_model('django_comments', 'Comment', require_ready=False)
     except (ValueError, LookupError) as e:
         raise ImproperlyConfigured(
-            f"Could not load comment model '{model_string}'. "
-            "Check your DJANGO_COMMENTS_CONFIG['USE_UUIDS'] setting."
+            f"Could not load comment model 'django_comments.Comment': {e}"
         ) from e
-
-
-def get_comment_model_path() -> str:
-    """
-    Return the path to the comment model.
-    Used for ForeignKey string references.
-    """
-    return comments_settings.comment_model_path
 
 
 def get_commentable_models() -> List[Type[models.Model]]:
@@ -373,10 +364,10 @@ def get_comment_context(obj: models.Model) -> Dict[str, Any]:
         'content_type_id': content_type.id,
         'app_label': content_type.app_label,
         'model_name': content_type.model,
-        'object_id': obj.pk,
+        'object_id': str(obj.pk),  # ✅ Always convert to string
         'comments': Comment.objects.filter(
             content_type=content_type,
-            object_id=obj.pk,
+            object_id=str(obj.pk),  # ✅ Always convert to string
             is_public=True,
             is_removed=False
         ).order_by('-created_at'),
@@ -421,6 +412,7 @@ def check_comment_permissions(user, comment_or_object, action='view'):
         return hasattr(comment_or_object, 'user') and comment_or_object.user == user
 
     return False
+
 
 def check_user_banned(user):
     """
@@ -603,96 +595,6 @@ def check_flag_threshold(comment):
             from .notifications import notify_auto_hide
             notify_auto_hide(comment, flag_count)
             actions_taken['notified'] = True
-    
-    return actions_taken
-
-
-def apply_automatic_flags(comment):
-    """
-    Apply automatic flags to a comment based on content analysis.
-    ENHANCED: Now supports auto-hiding.
-    
-    Args:
-        comment: Comment instance
-    """
-    from .models import CommentFlag, ModerationAction
-    from django.contrib.auth import get_user_model
-    
-    # Get system user for automatic flags
-    User = get_user_model()
-    system_user, _ = User.objects.get_or_create(
-        username='system',
-        defaults={
-            'email': 'system@django-comments.local',
-            'is_active': False,
-        }
-    )
-    
-    # Get content analysis
-    _, flags_to_apply = process_comment_content(comment.content)
-    
-    actions_taken = []
-    
-    # Apply spam flag if needed
-    if flags_to_apply.get('auto_flag_spam'):
-        try:
-            reason = flags_to_apply.get('spam_reason') or 'Automatically flagged by spam detection system'
-            CommentFlag.objects.create_or_get_flag(
-                comment=comment,
-                user=system_user,
-                flag='spam',
-                reason=reason
-            )
-            logger.info(f"Auto-flagged comment {comment.pk} as spam")
-            actions_taken.append('spam_flagged')
-            
-            # Auto-hide if enabled
-            if comments_settings.AUTO_HIDE_DETECTED_SPAM and comment.is_public:
-                comment.is_public = False
-                comment.save(update_fields=['is_public'])
-                
-                ModerationAction.objects.create(
-                    comment=comment,
-                    moderator=None,
-                    action='rejected',
-                    reason='Auto-hidden: Spam detected'
-                )
-                
-                logger.info(f"Auto-hidden comment {comment.pk} (spam detected)")
-                actions_taken.append('auto_hidden')
-                
-        except Exception as e:
-            logger.error(f"Failed to auto-flag comment as spam: {e}")
-    
-    # Apply profanity flag if needed
-    if flags_to_apply.get('auto_flag_profanity'):
-        try:
-            CommentFlag.objects.create_or_get_flag(
-                comment=comment,
-                user=system_user,
-                flag='offensive',
-                reason='Automatically flagged for profanity'
-            )
-            logger.info(f"Auto-flagged comment {comment.pk} for profanity")
-            actions_taken.append('profanity_flagged')
-            
-            # Auto-hide if enabled
-            if comments_settings.AUTO_HIDE_PROFANITY and comment.is_public:
-                comment.is_public = False
-                comment.save(update_fields=['is_public'])
-                
-                ModerationAction.objects.create(
-                    comment=comment,
-                    moderator=None,
-                    action='rejected',
-                    reason='Auto-hidden: Profanity detected'
-                )
-                
-                logger.info(f"Auto-hidden comment {comment.pk} (profanity detected)")
-                actions_taken.append('auto_hidden')
-                
-        except Exception as e:
-            logger.error(f"Failed to auto-flag comment for profanity: {e}")
     
     return actions_taken
 

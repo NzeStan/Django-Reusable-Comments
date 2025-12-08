@@ -30,6 +30,4 @@ class DjangoCommentsConfig(AppConfig):
             logger.addHandler(handler)
             logger.setLevel(logging.INFO)
         
-        # Log which model is being used (for debugging)
-        model_path = comments_settings.comment_model_path
-        logger.info(f'Django Comments initialized using model: {model_path}')
+        logger.info('Django Comments initialized with UUID-based Comment model')
