@@ -13,7 +13,7 @@ from ..utils import (
 )
 from ..formatting import render_comment_content 
 from django.contrib.auth import get_user_model
-
+import re
 
 Comment = get_comment_model()
 User = get_user_model()
@@ -309,6 +309,15 @@ class CommentSerializer(serializers.ModelSerializer):
         except Exception as e:
             raise serializers.ValidationError(str(e))
     
+
+    def validate_user_name(self, value):
+        if len(value) > 100:
+            raise serializers.ValidationError("Name too long")
+        # Only allow alphanumeric and basic punctuation
+        if not re.match(r'^[\w\s\-.,\']+$', value):
+            raise serializers.ValidationError("Invalid characters in name")
+        return value
+    
     def validate(self, data):
         """
         Validate the comment data.
@@ -363,11 +372,12 @@ class CommentSerializer(serializers.ModelSerializer):
 
         # -----------------------------------------
         # 🚫 Check if user is banned
+        # ✅ UPDATED: Use BannedUser.check_user_banned() instead of utils
         # -----------------------------------------
         user_is_authenticated = bool(user and getattr(user, "is_authenticated", False))
         if user_is_authenticated:
-            # Comes from CommentViewSet.get_serializer_context()
-            is_banned, ban_info = self.context.get("user_banned_info", (False, {}))
+            # ✅ NEW: Import from models instead of utils
+            is_banned, ban_info = BannedUser.check_user_banned(user)
 
             if is_banned:
                 if ban_info.get("is_permanent"):

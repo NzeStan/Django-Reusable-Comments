@@ -586,18 +586,71 @@ class BannedUser(models.Model):
     
     @classmethod
     def is_user_banned(cls, user):
-        """Check if a user is currently banned."""
-        if not user or not user.is_authenticated:
-            return False
+        """
+        Check if a user is currently banned (simple boolean check).
         
-        return cls.objects.filter(
-            user=user,
-            banned_until__isnull=True  # Permanent ban
-        ).exists() or cls.objects.filter(
-            user=user,
-            banned_until__gt=timezone.now()  # Temporary ban still active
-        ).exists()
-
+        For detailed ban info, use check_user_banned() instead.
+        
+        Args:
+            user: User instance
+        
+        Returns:
+            bool: True if user is currently banned
+        """
+        is_banned, _ = cls.check_user_banned(user)
+        return is_banned
+    
+    @classmethod
+    def check_user_banned(cls, user):
+        """
+        Check if user is banned with detailed information.
+        
+        ✅ SINGLE SOURCE OF TRUTH for ban checking.
+        This replaces the duplicate implementation in utils.py.
+        
+        Args:
+            user: User instance
+        
+        Returns:
+            tuple: (is_banned: bool, ban_info: dict or None)
+                   ban_info contains:
+                   - reason: str - Reason for ban
+                   - banned_until: datetime or None - When ban expires (None = permanent)
+                   - is_permanent: bool - Whether ban is permanent
+                   - banned_by: User - Who issued the ban
+                   - ban_object: BannedUser - The full ban object
+                   
+        Example:
+            >>> from django_comments.models import BannedUser
+            >>> is_banned, ban_info = BannedUser.check_user_banned(request.user)
+            >>> if is_banned:
+            >>>     if ban_info['is_permanent']:
+            >>>         print(f"Permanently banned: {ban_info['reason']}")
+            >>>     else:
+            >>>         print(f"Banned until {ban_info['banned_until']}")
+        """
+        if not user or not user.is_authenticated:
+            return False, None
+        
+        # Query for active bans (permanent or temporary still active)
+        active_ban = cls.objects.filter(
+            user=user
+        ).filter(
+            models.Q(banned_until__isnull=True) |  # Permanent ban
+            models.Q(banned_until__gt=timezone.now())  # Active temporary ban
+        ).select_related('banned_by').first()
+        
+        if active_ban:
+            ban_info = {
+                'reason': active_ban.reason,
+                'banned_until': active_ban.banned_until,
+                'is_permanent': active_ban.banned_until is None,
+                'banned_by': active_ban.banned_by,
+                'ban_object': active_ban,  # Include full object if needed
+            }
+            return True, ban_info
+        
+        return False, None
 
 # ============================================================================
 # COMMENT REVISION MODEL

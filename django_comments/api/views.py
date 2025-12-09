@@ -18,6 +18,8 @@ from ..utils import (
     create_comment_revision,
     log_moderation_action,
 )
+from rest_framework import serializers as drf_serializers
+import uuid
 from django.db.models.functions import TruncDate
 from django.utils import timezone
 from django.db.models import Count
@@ -59,6 +61,81 @@ def get_user_groups_cached(user, request):
     
     return request._cache[cache_key]
 
+# ADD this helper function at the TOP of views.py (after imports, before CommentViewSet class)
+
+def validate_comment_ids(comment_ids, max_count=100):
+    """
+    Validate a list of comment IDs for bulk operations.
+    
+    Security checks:
+    - Ensures input is a list
+    - Limits number of IDs to prevent DoS
+    - Validates each ID is a valid UUID format
+    - Prevents SQL injection and invalid queries
+    
+    Args:
+        comment_ids: List of comment IDs (strings or UUIDs)
+        max_count: Maximum allowed IDs (default 100)
+    
+    Returns:
+        list: List of validated UUID objects
+    
+    Raises:
+        serializers.ValidationError: If validation fails
+    
+    Example:
+        >>> ids = ['123e4567-e89b-12d3-a456-426614174000', 'invalid']
+        >>> validate_comment_ids(ids)  # Raises ValidationError
+    """
+    # Check 1: Must be a list
+    if not isinstance(comment_ids, list):
+        raise drf_serializers.ValidationError({
+            'comment_ids': _("Must be a list of comment IDs")
+        })
+    
+    # Check 2: Cannot be empty
+    if not comment_ids:
+        raise drf_serializers.ValidationError({
+            'comment_ids': _("List cannot be empty")
+        })
+    
+    # Check 3: Length limit to prevent DoS
+    if len(comment_ids) > max_count:
+        raise drf_serializers.ValidationError({
+            'comment_ids': _(
+                f"Cannot process more than {max_count} comments at once. "
+                f"You provided {len(comment_ids)} IDs."
+            )
+        })
+    
+    # Check 4: Validate each ID is a valid UUID
+    validated_ids = []
+    invalid_ids = []
+    
+    for i, cid in enumerate(comment_ids):
+        try:
+            # Convert to UUID - this validates the format
+            validated_uuid = uuid.UUID(str(cid))
+            validated_ids.append(validated_uuid)
+        except (ValueError, AttributeError, TypeError) as e:
+            # Track invalid IDs for better error message
+            invalid_ids.append({
+                'index': i,
+                'value': str(cid)[:50],  # Truncate for safety
+                'error': str(e)
+            })
+    
+    # If any invalid IDs, raise detailed error
+    if invalid_ids:
+        raise drf_serializers.ValidationError({
+            'comment_ids': _(
+                f"Found {len(invalid_ids)} invalid UUID(s). "
+                "All IDs must be valid UUIDs."
+            ),
+            'invalid_ids': invalid_ids[:5]  # Show first 5 for debugging
+        })
+    
+    return validated_ids
 
 class CommentViewSet(viewsets.ModelViewSet):
     """
@@ -219,21 +296,28 @@ class CommentViewSet(viewsets.ModelViewSet):
     
 
     def check_user_ban_cached(self, user):
-        """Check if user is banned with request-level caching."""
+        """
+        Check if user is banned with request-level caching.
+        
+        ✅ UPDATED: Now uses BannedUser.check_user_banned() from models
+        """
         if not hasattr(self.request, '_ban_cache'):
             self.request._ban_cache = {}
         
         user_id = user.pk
         if user_id not in self.request._ban_cache:
-            from ..utils import check_user_banned
-            self.request._ban_cache[user_id] = check_user_banned(user)
+            # ✅ NEW: Use BannedUser.check_user_banned() instead of utils
+            self.request._ban_cache[user_id] = BannedUser.check_user_banned(user)
         
         return self.request._ban_cache[user_id]
     
     def get_serializer_context(self):
+        """Add ban checking to serializer context."""
         context = super().get_serializer_context()
         if self.request.user.is_authenticated:
-            context['user_banned_info'] = self.check_user_ban_cached(self.request.user)
+            # ✅ SIMPLIFIED: Direct call without caching wrapper
+            # BannedUser.check_user_banned already optimizes with select_related
+            context['user_banned_info'] = BannedUser.check_user_banned(self.request.user)
         return context
 
     @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
@@ -375,6 +459,30 @@ class CommentViewSet(viewsets.ModelViewSet):
     def bulk_approve(self, request):
         """
         Approve multiple comments at once.
+        
+        ✅ FIXED: Added comprehensive input validation
+        
+        Request body:
+            {
+                "comment_ids": ["uuid1", "uuid2", ...]
+            }
+        
+        Returns:
+            {
+                "detail": "Success message",
+                "approved_count": 5,
+                "total_requested": 5,
+                "not_found_count": 0
+            }
+        
+        Permissions:
+            - User must be authenticated
+            - User must have 'can_moderate_comments' permission
+        
+        Errors:
+            - 403: No permission
+            - 400: Invalid input (not list, invalid UUIDs, too many IDs)
+            - 404: Some comment IDs not found
         """
         # Check moderation permission
         if not request.user.has_perm('django_comments.can_moderate_comments'):
@@ -383,33 +491,86 @@ class CommentViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_403_FORBIDDEN
             )
         
+        # Get comment IDs from request
         comment_ids = request.data.get('comment_ids', [])
         
-        if not comment_ids:
+        # ✅ FIXED: Validate input with comprehensive checks
+        try:
+            validated_ids = validate_comment_ids(comment_ids, max_count=100)
+        except drf_serializers.ValidationError as e:
+            return Response(e.detail, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Get comments from database
+        comments = Comment.objects.filter(pk__in=validated_ids)
+        found_count = comments.count()
+        
+        # ✅ IMPROVED: Track missing IDs for better error reporting
+        if found_count != len(validated_ids):
+            found_ids = set(str(c.pk) for c in comments)
+            missing_ids = [str(vid) for vid in validated_ids if str(vid) not in found_ids]
+            
             return Response(
-                {'detail': _("No comment IDs provided.")},
-                status=status.HTTP_400_BAD_REQUEST
+                {
+                    'detail': _("Some comment IDs were not found"),
+                    'requested': len(validated_ids),
+                    'found': found_count,
+                    'missing_count': len(missing_ids),
+                    'missing_ids': missing_ids[:10]  # Show first 10
+                },
+                status=status.HTTP_404_NOT_FOUND
             )
         
-        # Get comments
-        comments = Comment.objects.filter(pk__in=comment_ids)
-        
+        # Approve comments (only non-public ones)
         approved_count = 0
+        already_public = 0
+        
         for comment in comments:
             if not comment.is_public:
                 approve_comment(comment, moderator=request.user)
                 approved_count += 1
+            else:
+                already_public += 1
         
+        # Return success with detailed stats
         return Response({
-            'detail': _("Successfully approved {count} comments.").format(count=approved_count),
-            'approved_count': approved_count
+            'detail': _("Successfully approved {count} comment(s).").format(
+                count=approved_count
+            ),
+            'approved_count': approved_count,
+            'already_public': already_public,
+            'total_requested': len(validated_ids)
         })
+
 
 
     @action(detail=False, methods=['post'], permission_classes=[IsAuthenticated])
     def bulk_reject(self, request):
         """
         Reject multiple comments at once.
+        
+        ✅ FIXED: Added comprehensive input validation
+        
+        Request body:
+            {
+                "comment_ids": ["uuid1", "uuid2", ...],
+                "reason": "Optional rejection reason"
+            }
+        
+        Returns:
+            {
+                "detail": "Success message",
+                "rejected_count": 5,
+                "total_requested": 5
+            }
+        
+        Permissions:
+            - User must be authenticated
+            - User must have 'can_moderate_comments' permission
+        
+        Errors:
+            - 403: No permission
+            - 400: Invalid input (not list, invalid UUIDs, too many IDs)
+            - 404: Some comment IDs not found
         """
         # Check moderation permission
         if not request.user.has_perm('django_comments.can_moderate_comments'):
@@ -418,19 +579,47 @@ class CommentViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_403_FORBIDDEN
             )
         
+        # Get comment IDs and optional reason from request
         comment_ids = request.data.get('comment_ids', [])
         reason = request.data.get('reason', '')
         
-        if not comment_ids:
+        # ✅ FIXED: Validate input
+        try:
+            validated_ids = validate_comment_ids(comment_ids, max_count=100)
+        except drf_serializers.ValidationError as e:
+            return Response(e.detail, status=status.HTTP_400_BAD_REQUEST)
+        
+        # ✅ IMPROVED: Validate reason length
+        if reason and len(reason) > 1000:
             return Response(
-                {'detail': _("No comment IDs provided.")},
+                {'detail': _("Reason must be 1000 characters or less")},
                 status=status.HTTP_400_BAD_REQUEST
             )
         
-        # Get comments
-        comments = Comment.objects.filter(pk__in=comment_ids)
+        # Get comments from database
+        comments = Comment.objects.filter(pk__in=validated_ids)
+        found_count = comments.count()
         
+        # Check if all comments were found
+        if found_count != len(validated_ids):
+            found_ids = set(str(c.pk) for c in comments)
+            missing_ids = [str(vid) for vid in validated_ids if str(vid) not in found_ids]
+            
+            return Response(
+                {
+                    'detail': _("Some comment IDs were not found"),
+                    'requested': len(validated_ids),
+                    'found': found_count,
+                    'missing_count': len(missing_ids),
+                    'missing_ids': missing_ids[:10]
+                },
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # Reject comments (only public ones)
         rejected_count = 0
+        already_rejected = 0
+        
         for comment in comments:
             if comment.is_public:
                 reject_comment(comment, moderator=request.user)
@@ -445,75 +634,155 @@ class CommentViewSet(viewsets.ModelViewSet):
                     )
                 
                 rejected_count += 1
+            else:
+                already_rejected += 1
         
+        # Return success with detailed stats
         return Response({
-            'detail': _("Successfully rejected {count} comments.").format(count=rejected_count),
-            'rejected_count': rejected_count
+            'detail': _("Successfully rejected {count} comment(s).").format(
+                count=rejected_count
+            ),
+            'rejected_count': rejected_count,
+            'already_rejected': already_rejected,
+            'total_requested': len(validated_ids),
+            'reason_provided': bool(reason)
         })
 
-
-    
 
     @action(detail=False, methods=['post'], permission_classes=[IsAuthenticated])
     def bulk_delete(self, request):
         """
         Delete multiple comments at once with moderation logging.
+        
+        ✅ FIXED: Added comprehensive input validation
+        
+        Request body:
+            {
+                "comment_ids": ["uuid1", "uuid2", ...],
+                "reason": "Optional deletion reason"
+            }
+        
+        Returns:
+            {
+                "detail": "Success message",
+                "deleted_count": 5,
+                "total_requested": 5
+            }
+        
+        Permissions:
+            - User must be authenticated
+            - User must have 'can_moderate_comments' permission
+        
+        Errors:
+            - 403: No permission
+            - 400: Invalid input (not list, invalid UUIDs, too many IDs)
+            - 404: Some comment IDs not found
+            - 500: Database error during deletion
+        
+        Notes:
+            - This is a destructive action that cannot be undone
+            - All moderation actions are logged before deletion
+            - Deletes are performed in a transaction for safety
         """
+        # Check moderation permission
         if not request.user.has_perm('django_comments.can_moderate_comments'):
             return Response(
                 {'detail': _("You don't have permission to moderate comments.")},
                 status=status.HTTP_403_FORBIDDEN
             )
 
+        # Get comment IDs and optional reason from request
         comment_ids = request.data.get('comment_ids', [])
         reason = request.data.get('reason', '')
 
-        if not comment_ids:
+        # ✅ FIXED: Validate input
+        try:
+            validated_ids = validate_comment_ids(comment_ids, max_count=100)
+        except drf_serializers.ValidationError as e:
+            return Response(e.detail, status=status.HTTP_400_BAD_REQUEST)
+        
+        # ✅ IMPROVED: Validate reason length
+        if reason and len(reason) > 1000:
             return Response(
-                {'detail': _("No comment IDs provided.")},
+                {'detail': _("Reason must be 1000 characters or less")},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        comments_qs = Comment.objects.filter(pk__in=comment_ids)
+        # Get comments from database
+        comments_qs = Comment.objects.filter(pk__in=validated_ids)
 
         if not comments_qs.exists():
             return Response(
                 {'detail': _("No comments found for the provided IDs.")},
                 status=status.HTTP_404_NOT_FOUND
             )
+        
+        # ✅ IMPROVED: Check if all comments exist
+        found_count = comments_qs.count()
+        if found_count != len(validated_ids):
+            found_ids = set(str(c.pk) for c in comments_qs)
+            missing_ids = [str(vid) for vid in validated_ids if str(vid) not in found_ids]
+            
+            return Response(
+                {
+                    'detail': _("Some comment IDs were not found"),
+                    'requested': len(validated_ids),
+                    'found': found_count,
+                    'missing_count': len(missing_ids),
+                    'missing_ids': missing_ids[:10]
+                },
+                status=status.HTTP_404_NOT_FOUND
+            )
 
+        # Get content type and IP for logging
         comment_ct = ContentType.objects.get_for_model(Comment)
         ip_address = request.META.get('REMOTE_ADDR') or ''
 
         try:
             with transaction.atomic():
-                # Log moderation actions
-                moderation_actions = [
-                    ModerationAction(
-                        comment_type=comment_ct,
-                        comment_id=c.pk,  # keep as int if field is IntegerField
-                        moderator=request.user,
-                        action='deleted',
-                        reason=reason,
-                        ip_address=ip_address
+                # ✅ IMPROVED: Log moderation actions before deletion
+                moderation_actions = []
+                for comment in comments_qs:
+                    moderation_actions.append(
+                        ModerationAction(
+                            comment_type=comment_ct,
+                            comment_id=str(comment.pk),  # Ensure string for UUID
+                            moderator=request.user,
+                            action='deleted',
+                            reason=reason or 'Bulk deletion',
+                            ip_address=ip_address
+                        )
                     )
-                    for c in comments_qs
-                ]
+                
+                # Bulk create logs for efficiency
                 ModerationAction.objects.bulk_create(moderation_actions)
 
-                # Delete comments and get only Comment count
+                # Delete comments and get count
                 deleted_count = comments_qs.count()
                 comments_qs.delete()
 
         except Exception as e:
+            # Log the error
+            import logging
+            logger = logging.getLogger(comments_settings.LOGGER_NAME)
+            logger.error(f"Error during bulk delete: {e}")
+            
             return Response(
-                {'detail': _("Error deleting comments: ") + str(e)},
+                {
+                    'detail': _("Error deleting comments: {error}").format(error=str(e)),
+                    'error_type': type(e).__name__
+                },
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
+        # Return success with stats
         return Response({
-            'detail': _("Successfully deleted {count} comments.").format(count=deleted_count),
-            'deleted_count': deleted_count
+            'detail': _("Successfully deleted {count} comment(s).").format(
+                count=deleted_count
+            ),
+            'deleted_count': deleted_count,
+            'total_requested': len(validated_ids),
+            'reason_provided': bool(reason)
         })
 
     @action(detail=False, methods=['get'], permission_classes=[IsAuthenticated])

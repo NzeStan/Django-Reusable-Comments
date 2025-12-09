@@ -9,8 +9,12 @@ from django.db import models
 from .conf import comments_settings
 from django.utils import timezone
 from datetime import timedelta
-from django.db import IntegrityError
+from django.db import IntegrityError, transaction
 from functools import lru_cache
+from django.contrib.auth import get_user_model
+from .models import BannedUser
+User = get_user_model()
+
 logger = logging.getLogger(comments_settings.LOGGER_NAME)
 
 
@@ -305,26 +309,33 @@ def apply_automatic_flags(comment):
     """
     Apply automatic flags to a comment based on content analysis.
     
+    ✅ FIXED: Uses get_or_create_system_user() to prevent race conditions.
+    
+    This function is called after a comment is created to:
+    - Flag spam detected by spam detection system
+    - Flag profanity detected by profanity filter
+    
+    Flags are created by the "system" user to distinguish them from
+    user-initiated flags.
+    
     Args:
-        comment: Comment instance
+        comment: Comment instance to potentially flag
+    
+    Example:
+        >>> comment = Comment.objects.create(content="Buy cheap watches!")
+        >>> apply_automatic_flags(comment)
+        >>> # Comment is now flagged as spam by system user
+    
+    Notes:
+        - Only flags if spam/profanity detection is enabled
+        - Creates flags with detailed reasons
+        - Logs all auto-flagging actions
+        - Does not fail silently - errors are logged
     """
     from .models import CommentFlag
-    from django.contrib.auth import get_user_model
     
-    # Get system user for automatic flags
-    User = get_user_model()
-    try:
-        system_user = User.objects.get(username='system')
-    except User.DoesNotExist:
-        try:
-            system_user = User.objects.create(
-                username='system',
-                email='system@django-comments.local',
-                is_active=False,
-            )
-        except IntegrityError:
-            # Another process created it, fetch it
-            system_user = User.objects.get(username='system')
+    # ✅ FIXED: Use atomic helper function
+    system_user = get_or_create_system_user()
     
     # Get content analysis
     _, flags_to_apply = process_comment_content(comment.content)
@@ -332,29 +343,70 @@ def apply_automatic_flags(comment):
     # Apply spam flag if needed
     if flags_to_apply.get('auto_flag_spam'):
         try:
-            reason = flags_to_apply.get('spam_reason') or 'Automatically flagged by spam detection system'
-            CommentFlag.objects.create_or_get_flag(
+            reason = (
+                flags_to_apply.get('spam_reason') or 
+                'Automatically flagged by spam detection system'
+            )
+            
+            # Use manager's create_or_get_flag to prevent duplicates
+            flag, created = CommentFlag.objects.create_or_get_flag(
                 comment=comment,
                 user=system_user,
                 flag='spam',
                 reason=reason
             )
-            logger.info(f"Auto-flagged comment {comment.pk} as spam")
+            
+            if created:
+                logger.info(
+                    f"Auto-flagged comment {comment.pk} as spam. "
+                    f"Reason: {reason}"
+                )
+            else:
+                logger.debug(
+                    f"Spam flag already exists for comment {comment.pk}"
+                )
+                
         except Exception as e:
-            logger.error(f"Failed to auto-flag comment as spam: {e}")
+            # Don't fail the comment creation, just log error
+            logger.error(
+                f"Failed to auto-flag comment {comment.pk} as spam: {e}",
+                exc_info=True
+            )
     
     # Apply profanity flag if needed
     if flags_to_apply.get('auto_flag_profanity'):
         try:
-            CommentFlag.objects.create_or_get_flag(
+            reason = 'Automatically flagged for profanity'
+            
+            flag, created = CommentFlag.objects.create_or_get_flag(
                 comment=comment,
                 user=system_user,
                 flag='offensive',
-                reason='Automatically flagged for profanity'
+                reason=reason
             )
-            logger.info(f"Auto-flagged comment {comment.pk} for profanity")
+            
+            if created:
+                logger.info(
+                    f"Auto-flagged comment {comment.pk} for profanity"
+                )
+            else:
+                logger.debug(
+                    f"Profanity flag already exists for comment {comment.pk}"
+                )
+                
         except Exception as e:
-            logger.error(f"Failed to auto-flag comment for profanity: {e}")
+            # Don't fail the comment creation, just log error
+            logger.error(
+                f"Failed to auto-flag comment {comment.pk} for profanity: {e}",
+                exc_info=True
+            )
+    
+    # Return summary of actions taken
+    return {
+        'spam_flagged': flags_to_apply.get('auto_flag_spam', False),
+        'profanity_flagged': flags_to_apply.get('auto_flag_profanity', False),
+    }
+
 
 
 def get_comment_context(obj: models.Model) -> Dict[str, Any]:
@@ -417,40 +469,6 @@ def check_comment_permissions(user, comment_or_object, action='view'):
 
     return False
 
-
-def check_user_banned(user):
-    """
-    Check if a user is banned from commenting.
-    
-    Args:
-        user: User instance
-    
-    Returns:
-        tuple: (is_banned: bool, ban_info: dict or None)
-    """
-    from .models import BannedUser
-    
-    if not user or not user.is_authenticated:
-        return False, None
-    
-    # Check for active bans
-    active_bans = BannedUser.objects.filter(
-        user=user
-    ).filter(
-        models.Q(banned_until__isnull=True) |  # Permanent
-        models.Q(banned_until__gt=timezone.now())  # Temporary still active
-    ).first()
-    
-    if active_bans:
-        ban_info = {
-            'reason': active_bans.reason,
-            'banned_until': active_bans.banned_until,
-            'is_permanent': active_bans.banned_until is None,
-            'banned_by': active_bans.banned_by,
-        }
-        return True, ban_info
-    
-    return False, None
 
 
 def check_flag_abuse(user):
@@ -542,6 +560,70 @@ def should_auto_approve_user(user):
     
     return False
 
+def get_or_create_system_user():
+    """
+    Get or create the system user atomically.
+    
+    ✅ FIXED: Uses get_or_create() to prevent race conditions.
+    This is the single source of truth for system user creation.
+    
+    The system user is used for:
+    - Automatic spam/profanity flagging
+    - Auto-ban actions
+    - System-initiated moderation
+    
+    Returns:
+        User: The system user instance
+    
+    Example:
+        >>> system_user = get_or_create_system_user()
+        >>> flag = CommentFlag.objects.create(
+        ...     comment=comment,
+        ...     user=system_user,
+        ...     flag='spam'
+        ... )
+    
+    Notes:
+        - User is created with is_active=False to prevent login
+        - User has no password set (cannot authenticate)
+        - Multiple processes calling this simultaneously is safe
+        - Uses database-level atomicity to prevent duplicates
+    """
+    try:
+        # ✅ ATOMIC: get_or_create prevents race conditions
+        # Only one process will create, others will get existing
+        system_user, created = User.objects.get_or_create(
+            username='system',
+            defaults={
+                'email': 'system@django-comments.local',
+                'is_active': False,  # Prevent login
+                'first_name': 'System',
+                'last_name': 'User',
+            }
+        )
+        
+        if created:
+            logger.info("Created system user for automatic operations")
+        
+        return system_user
+        
+    except IntegrityError as e:
+        # Should never happen with get_or_create, but handle it
+        logger.error(f"IntegrityError creating system user: {e}")
+        
+        # Try to get the existing user
+        try:
+            system_user = User.objects.get(username='system')
+            logger.info("Retrieved existing system user after IntegrityError")
+            return system_user
+        except User.DoesNotExist:
+            # This should really never happen
+            logger.critical("Cannot create or retrieve system user!")
+            raise
+    
+    except Exception as e:
+        logger.error(f"Unexpected error getting system user: {e}")
+        raise
 
 def check_flag_threshold(comment):
     """
@@ -746,60 +828,144 @@ def check_auto_ban_conditions(user):
     return False, None
 
 
-def auto_ban_user(user, reason):
+def auto_ban_user(user, reason: str) -> Optional['BannedUser']:
     """
-    Automatically ban a user.
+    Automatically ban a user based on their behavior.
+    
+    ✅ FIXED: Uses get_or_create_system_user() to prevent race conditions.
+    
+    This function is called when a user exceeds thresholds for:
+    - Number of rejected comments
+    - Number of spam flags
+    - Other automatic ban conditions
     
     Args:
-        user: User instance
-        reason: Reason for ban
+        user: User instance to ban
+        reason: Detailed reason for the ban
     
     Returns:
-        BannedUser instance or None
+        BannedUser instance if successful, None if failed
+    
+    Example:
+        >>> user = User.objects.get(username='spammer')
+        >>> ban = auto_ban_user(user, "Auto-ban: 5 spam flags")
+        >>> if ban:
+        >>>     print(f"User banned until {ban.banned_until}")
+    
+    Notes:
+        - Ban duration is controlled by DEFAULT_BAN_DURATION_DAYS setting
+        - If duration is None, creates permanent ban
+        - Logs moderation action for audit trail
+        - Sends notification email to banned user
+        - Does not raise exceptions - returns None on failure
     """
     from .models import BannedUser
-    from django.contrib.auth import get_user_model
+    
+    # Validate input
+    if not user or not user.is_authenticated:
+        logger.warning("Attempted to ban invalid user")
+        return None
     
     try:
-        # Get system user
-        User = get_user_model()
-        system_user, _ = User.objects.get_or_create(
-            username='system',
-            defaults={
-                'email': 'system@django-comments.local',
-                'is_active': False,
-            }
-        )
+        # ✅ FIXED: Use atomic helper function
+        system_user = get_or_create_system_user()
         
         # Calculate ban duration
         ban_duration = comments_settings.DEFAULT_BAN_DURATION_DAYS
         banned_until = None
+        
         if ban_duration:
             banned_until = timezone.now() + timedelta(days=ban_duration)
+            logger.info(
+                f"Auto-banning user {user.pk} for {ban_duration} days. "
+                f"Reason: {reason}"
+            )
+        else:
+            logger.warning(
+                f"Auto-banning user {user.pk} PERMANENTLY. "
+                f"Reason: {reason}"
+            )
         
-        # Create ban
-        ban = BannedUser.objects.create(
+        # ✅ IMPROVED: Check if user is already banned
+        existing_ban = BannedUser.objects.filter(
             user=user,
-            banned_until=banned_until,
-            reason=reason,
-            banned_by=system_user
+            banned_until__isnull=True  # Permanent
+        ).first() or BannedUser.objects.filter(
+            user=user,
+            banned_until__gt=timezone.now()  # Active temporary
+        ).first()
+        
+        if existing_ban:
+            logger.info(
+                f"User {user.pk} is already banned. "
+                f"Skipping auto-ban. Existing reason: {existing_ban.reason}"
+            )
+            return existing_ban
+        
+        # Create the ban
+        with transaction.atomic():
+            ban = BannedUser.objects.create(
+                user=user,
+                banned_until=banned_until,
+                reason=reason,
+                banned_by=system_user
+            )
+            
+            # Log moderation action
+            log_moderation_action(
+                comment=None,  # No specific comment
+                moderator=system_user,
+                action='banned_user',
+                reason=reason,
+                affected_user=user
+            )
+        
+        logger.warning(
+            f"Successfully auto-banned user {user.pk} "
+            f"({'permanent' if not banned_until else f'until {banned_until}'})"
         )
         
-        # Log action
-        log_moderation_action(
-            comment=None,
-            moderator=system_user,
-            action='banned_user',
-            reason=reason,
-            affected_user=user
-        )
+        # ✅ IMPROVED: Send notification email
+        if comments_settings.SEND_NOTIFICATIONS:
+            try:
+                from .notifications import notify_user_banned
+                notify_user_banned(ban)
+                logger.info(f"Sent ban notification to user {user.pk}")
+            except Exception as e:
+                # Don't fail ban if email fails
+                logger.error(
+                    f"Failed to send ban notification to user {user.pk}: {e}",
+                    exc_info=True
+                )
         
-        logger.warning(f"Auto-banned user {user.pk}: {reason}")
         return ban
         
-    except Exception as e:
-        logger.error(f"Failed to auto-ban user: {e}")
+    except IntegrityError as e:
+        # Possible duplicate ban attempt
+        logger.error(
+            f"IntegrityError auto-banning user {user.pk}: {e}. "
+            "Checking for existing ban..."
+        )
+        
+        # Try to return existing ban
+        try:
+            existing_ban = BannedUser.objects.filter(user=user).first()
+            if existing_ban:
+                logger.info(f"Found existing ban for user {user.pk}")
+                return existing_ban
+        except Exception:
+            pass
+        
         return None
+        
+    except Exception as e:
+        # Log error but don't crash
+        logger.error(
+            f"Failed to auto-ban user {user.pk}: {e}",
+            exc_info=True
+        )
+        return None
+
     
 # ============================================================================
 # UTILITY FUNCTIONS FOR BULK OPERATIONS

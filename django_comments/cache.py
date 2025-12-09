@@ -13,10 +13,11 @@ CACHE_TIMEOUT = getattr(comments_settings, 'CACHE_TIMEOUT', 3600)
 
 
 def get_cache_key(prefix, content_type, object_id):
-    """
-    Generate a consistent cache key.
-    """
-    return f"django_comments:{prefix}:{content_type}:{object_id}"
+    """Generate a safe cache key."""
+    # Replace any colons to prevent key collisions
+    safe_ct = str(content_type).replace(':', '_')
+    safe_id = str(object_id).replace(':', '_')
+    return f"django_comments:{prefix}:{safe_ct}:{safe_id}"
 
 
 def get_comment_count_cache_key(content_object):
