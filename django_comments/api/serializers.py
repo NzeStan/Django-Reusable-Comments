@@ -222,20 +222,10 @@ class CommentSerializer(serializers.ModelSerializer):
             return obj.content
 
     def get_revisions_count(self, obj):
-        """Get count of revisions for this comment."""
-        from django.contrib.contenttypes.models import ContentType
-        return CommentRevision.objects.filter(
-            comment_type=ContentType.objects.get_for_model(obj),
-            comment_id=str(obj.pk)
-        ).count()
-    
+        return getattr(obj, 'revisions_count_annotated', 0)
+
     def get_moderation_actions_count(self, obj):
-        """Get count of moderation actions for this comment."""
-        from django.contrib.contenttypes.models import ContentType
-        return ModerationAction.objects.filter(
-            comment_type=ContentType.objects.get_for_model(obj),
-            comment_id=str(obj.pk)
-        ).count()
+        return getattr(obj, 'moderation_actions_count_annotated', 0)
     
     def validate_parent(self, value):
         """
@@ -376,8 +366,8 @@ class CommentSerializer(serializers.ModelSerializer):
         # -----------------------------------------
         user_is_authenticated = bool(user and getattr(user, "is_authenticated", False))
         if user_is_authenticated:
-            from ..utils import check_user_banned
-            is_banned, ban_info = check_user_banned(user)
+            # Comes from CommentViewSet.get_serializer_context()
+            is_banned, ban_info = self.context.get("user_banned_info", (False, {}))
 
             if is_banned:
                 if ban_info.get("is_permanent"):
@@ -444,6 +434,7 @@ class CommentSerializer(serializers.ModelSerializer):
             'object_id': str(obj.object_id),  # Always convert to string
             'object_repr': str(obj.content_object),
         }
+    
     
     def get_is_flagged(self, obj) -> bool:
         """

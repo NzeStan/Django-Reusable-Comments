@@ -393,6 +393,28 @@ class CommentsSettings:
                 f"got '{self.COMMENT_FORMAT}'"
             )
         
+
+        # Validate positive integers
+        if self.MAX_COMMENT_DEPTH is not None and self.MAX_COMMENT_DEPTH < 1:
+            errors.append(
+                f"MAX_COMMENT_DEPTH must be positive or None, got {self.MAX_COMMENT_DEPTH}"
+            )
+        
+        if self.MAX_COMMENT_LENGTH < 1:
+            errors.append(
+                f"MAX_COMMENT_LENGTH must be positive, got {self.MAX_COMMENT_LENGTH}"
+            )
+        
+        if self.CACHE_TIMEOUT < 0:
+            errors.append(
+                f"CACHE_TIMEOUT must be non-negative, got {self.CACHE_TIMEOUT}"
+            )
+        
+        if self.EDIT_TIME_WINDOW is not None and self.EDIT_TIME_WINDOW < 0:
+            errors.append(
+                f"EDIT_TIME_WINDOW must be positive or None, got {self.EDIT_TIME_WINDOW}"
+            )
+    
         # Validate SPAM_ACTION
         valid_spam_actions = ['flag', 'hide', 'delete']
         if self.SPAM_ACTION not in valid_spam_actions:

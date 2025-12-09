@@ -193,16 +193,19 @@ class BaseCommentMixin(models.Model):
     
     def get_descendants(self):
         """Get all descendants of this comment."""
-        return type(self).objects.filter(path__startswith=f"{self.path}/")
-    
+        return type(self).objects.filter(
+            path__startswith=f"{self.path}/"
+        ).select_related('user', 'content_type')
+
     def get_ancestors(self):
         """Get all ancestors of this comment."""
         if not self.parent:
             return type(self).objects.none()
         
-        # Split path to get ancestor PKs
         ancestor_ids = self.path.split('/')[:-1]
-        return type(self).objects.filter(pk__in=ancestor_ids).order_by('path')
+        return type(self).objects.filter(
+            pk__in=ancestor_ids
+        ).select_related('user', 'content_type').order_by('path')
     
     @property
     def depth(self):
@@ -427,24 +430,87 @@ class CommentFlag(models.Model):
             return f'CommentFlag {self.pk}'
     
     def clean(self):
-        """Validate the flag before saving."""
-        super().clean()
+        """
+        Validate the flag before saving.
         
-        if self.comment_type and self.comment_id:
-            try:
-                model_class = self.comment_type.model_class()
-                if model_class:
-                    exists = model_class.objects.filter(pk=self.comment_id).exists()
-                    if not exists:
-                        raise ValidationError({
-                            'comment_id': _(
-                                f'Comment with ID {self.comment_id} does not exist.'
-                            )
-                        })
-            except Exception as e:
-                raise ValidationError({
-                    'comment': _('Invalid comment reference: {error}').format(error=str(e))
-                })
+        OPTIMIZED: Skips validation if comment was already accessed via GenericForeignKey
+        or if skip_clean_validation flag is set (for bulk operations).
+        
+        Performance optimizations:
+        - Checks _comment_cache to see if comment object is already loaded
+        - Caches validation results per instance
+        - Uses only('pk') for minimal data fetch
+        - Provides _skip_clean_validation flag for bulk operations
+        
+        Examples:
+            # Normal usage (validation happens automatically)
+            flag = CommentFlag(comment_type=ct, comment_id='123', user=user, flag='spam')
+            flag.full_clean()  # Validates once
+            
+            # Bulk operation (skip validation)
+            flags = []
+            for data in bulk_data:
+                flag = CommentFlag(**data)
+                flag._skip_clean_validation = True  # Skip expensive check
+                flags.append(flag)
+            CommentFlag.objects.bulk_create(flags)
+            
+            # Comment already loaded (no validation needed)
+            flag = comment.flags.first()  # comment is already in _comment_cache
+            flag.full_clean()  # Skips DB query
+        """
+        super(CommentFlag, self).clean()
+        
+        # ✅ OPTIMIZATION 1: Skip validation if explicitly disabled (bulk operations)
+        if getattr(self, '_skip_clean_validation', False):
+            return
+        
+        # ✅ OPTIMIZATION 2: Skip if comment object is already loaded via GenericForeignKey
+        # When you access flag.comment, Django caches it in _comment_cache
+        # If it's there, we know the comment exists
+        if hasattr(self, '_comment_cache') and self._comment_cache is not None:
+            return
+        
+        # Skip validation if required fields aren't set yet
+        if not self.comment_type or not self.comment_id:
+            return
+        
+        # ✅ OPTIMIZATION 3: Cache validation result on this instance
+        # Prevents duplicate checks if clean() is called multiple times
+        cache_key = f'_validated_{self.comment_type.pk}_{self.comment_id}'
+        if getattr(self, cache_key, False):
+            return
+        
+        # ✅ OPTIMIZATION 4: Perform validation with minimal data fetch
+        try:
+            model_class = self.comment_type.model_class()
+            if model_class:
+                # Use only('pk') to fetch just the primary key, not all fields
+                # This is much faster than a full object fetch
+                exists = model_class.objects.filter(
+                    pk=self.comment_id
+                ).only('pk').exists()
+                
+                if not exists:
+                    raise ValidationError({
+                        'comment_id': _(
+                            f'Comment with ID {self.comment_id} does not exist.'
+                        )
+                    })
+                
+                # ✅ Cache the validation result
+                setattr(self, cache_key, True)
+                
+        except ValidationError:
+            # Re-raise validation errors as-is
+            raise
+        except Exception as e:
+            # ✅ OPTIMIZATION 5: Proper exception handling
+            # Log unexpected errors but convert to ValidationError
+            logger.error(f"Error validating comment reference: {e}")
+            raise ValidationError({
+                'comment': _('Invalid comment reference: {error}').format(error=str(e))
+            })
     
     def mark_reviewed(self, moderator, action, notes=''):
         """Mark this flag as reviewed."""

@@ -9,7 +9,7 @@ from rest_framework.response import Response
 from django_filters.rest_framework import DjangoFilterBackend
 from ..conf import comments_settings
 from ..exceptions import CommentModerated
-from ..models import CommentFlag, BannedUser, CommentRevision
+from ..models import CommentFlag, BannedUser, CommentRevision, ModerationAction
 from ..signals import flag_comment, approve_comment, reject_comment
 from ..utils import (
     get_comment_model,
@@ -18,6 +18,7 @@ from ..utils import (
     create_comment_revision,
     log_moderation_action,
 )
+from django.db.models.functions import TruncDate
 from django.utils import timezone
 from django.db.models import Count
 from rest_framework import status
@@ -28,6 +29,7 @@ from .serializers import (
     CreateCommentFlagSerializer,
     BannedUserSerializer,
 )
+from django.db import transaction 
 from .permissions import (
     CommentPermission, 
 )
@@ -118,8 +120,22 @@ class CommentViewSet(viewsets.ModelViewSet):
         )
         
         queryset = queryset.annotate(
-            flags_count_annotated=models.Count('flags', distinct=True),
-            children_count_annotated=models.Count('children', distinct=True)
+            revisions_count_annotated=models.Count(
+                'django_comments_commentrevision',
+                filter=models.Q(
+                    django_comments_commentrevision__comment_type=models.F('content_type'),
+                    django_comments_commentrevision__comment_id=models.F('id')
+                ),
+                distinct=True
+            ),
+            moderation_actions_count_annotated=models.Count(
+                'django_comments_moderationaction',
+                filter=models.Q(
+                    django_comments_moderationaction__comment_type=models.F('content_type'),
+                    django_comments_moderationaction__comment_id=models.F('id')
+                ),
+                distinct=True
+            )
         )
         
         if self.action == 'retrieve':
@@ -201,6 +217,25 @@ class CommentViewSet(viewsets.ModelViewSet):
                 message=_("Your comment has been submitted and is awaiting moderation.")
             )
     
+
+    def check_user_ban_cached(self, user):
+        """Check if user is banned with request-level caching."""
+        if not hasattr(self.request, '_ban_cache'):
+            self.request._ban_cache = {}
+        
+        user_id = user.pk
+        if user_id not in self.request._ban_cache:
+            from ..utils import check_user_banned
+            self.request._ban_cache[user_id] = check_user_banned(user)
+        
+        return self.request._ban_cache[user_id]
+    
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        if self.request.user.is_authenticated:
+            context['user_banned_info'] = self.check_user_ban_cached(self.request.user)
+        return context
+
     @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
     def flag(self, request, pk=None):
         """
@@ -422,38 +457,60 @@ class CommentViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['post'], permission_classes=[IsAuthenticated])
     def bulk_delete(self, request):
         """
-        Delete multiple comments at once.
+        Delete multiple comments at once with moderation logging.
         """
-        # Check moderation permission
         if not request.user.has_perm('django_comments.can_moderate_comments'):
             return Response(
                 {'detail': _("You don't have permission to moderate comments.")},
                 status=status.HTTP_403_FORBIDDEN
             )
-        
+
         comment_ids = request.data.get('comment_ids', [])
         reason = request.data.get('reason', '')
-        
+
         if not comment_ids:
             return Response(
                 {'detail': _("No comment IDs provided.")},
                 status=status.HTTP_400_BAD_REQUEST
             )
-        
-        # Log before deleting
-        comments_to_log = Comment.objects.filter(pk__in=comment_ids)
-        for comment in comments_to_log:
-            log_moderation_action(
-                comment=comment,
-                moderator=request.user,
-                action='deleted',
-                reason=reason
+
+        comments_qs = Comment.objects.filter(pk__in=comment_ids)
+
+        if not comments_qs.exists():
+            return Response(
+                {'detail': _("No comments found for the provided IDs.")},
+                status=status.HTTP_404_NOT_FOUND
             )
-        
-        # Create a fresh queryset for deletion
-        comments_to_delete = Comment.objects.filter(pk__in=comment_ids)
-        deleted_count, details = comments_to_delete.delete()
-        
+
+        comment_ct = ContentType.objects.get_for_model(Comment)
+        ip_address = request.META.get('REMOTE_ADDR') or ''
+
+        try:
+            with transaction.atomic():
+                # Log moderation actions
+                moderation_actions = [
+                    ModerationAction(
+                        comment_type=comment_ct,
+                        comment_id=c.pk,  # keep as int if field is IntegerField
+                        moderator=request.user,
+                        action='deleted',
+                        reason=reason,
+                        ip_address=ip_address
+                    )
+                    for c in comments_qs
+                ]
+                ModerationAction.objects.bulk_create(moderation_actions)
+
+                # Delete comments and get only Comment count
+                deleted_count = comments_qs.count()
+                comments_qs.delete()
+
+        except Exception as e:
+            return Response(
+                {'detail': _("Error deleting comments: ") + str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
         return Response({
             'detail': _("Successfully deleted {count} comments.").format(count=deleted_count),
             'deleted_count': deleted_count
@@ -496,8 +553,8 @@ class CommentViewSet(viewsets.ModelViewSet):
         thirty_days_ago = timezone.now() - timedelta(days=30)
         flags_by_day = CommentFlag.objects.filter(
             created_at__gte=thirty_days_ago
-        ).extra(
-            select={'day': 'date(created_at)'}
+        ).annotate(
+            day=TruncDate('created_at')
         ).values('day').annotate(
             count=Count('id')
         ).order_by('day')

@@ -9,7 +9,8 @@ from django.db import models
 from .conf import comments_settings
 from django.utils import timezone
 from datetime import timedelta
-
+from django.db import IntegrityError
+from functools import lru_cache
 logger = logging.getLogger(comments_settings.LOGGER_NAME)
 
 
@@ -31,11 +32,9 @@ def get_comment_model():
         ) from e
 
 
+@lru_cache(maxsize=1)
 def get_commentable_models() -> List[Type[models.Model]]:
-    """
-    Return a list of model classes that can be commented on.
-    Accepts either 'app_label.ModelName' or 'module.path.ModelClass'.
-    """
+    """Return a list of model classes that can be commented on."""
     model_paths = comments_settings.COMMENTABLE_MODELS
 
     if not model_paths:
@@ -314,13 +313,18 @@ def apply_automatic_flags(comment):
     
     # Get system user for automatic flags
     User = get_user_model()
-    system_user, _ = User.objects.get_or_create(
-        username='system',
-        defaults={
-            'email': 'system@django-comments.local',
-            'is_active': False,
-        }
-    )
+    try:
+        system_user = User.objects.get(username='system')
+    except User.DoesNotExist:
+        try:
+            system_user = User.objects.create(
+                username='system',
+                email='system@django-comments.local',
+                is_active=False,
+            )
+        except IntegrityError:
+            # Another process created it, fetch it
+            system_user = User.objects.get(username='system')
     
     # Get content analysis
     _, flags_to_apply = process_comment_content(comment.content)
@@ -796,3 +800,79 @@ def auto_ban_user(user, reason):
     except Exception as e:
         logger.error(f"Failed to auto-ban user: {e}")
         return None
+    
+# ============================================================================
+# UTILITY FUNCTIONS FOR BULK OPERATIONS
+# ============================================================================
+
+def bulk_create_flags_without_validation(flag_data_list):
+    """
+    Bulk create CommentFlag instances without running clean() validation.
+    
+    Use this when you're confident the data is valid and want maximum performance.
+    
+    Args:
+        flag_data_list: List of dicts with flag data
+            [
+                {'comment_type': ct, 'comment_id': '123', 'user': user, 'flag': 'spam'},
+                ...
+            ]
+    
+    Returns:
+        List of created CommentFlag instances
+    
+    Example:
+        from django.contrib.contenttypes.models import ContentType
+        from django_comments.models import CommentFlag, Comment
+        
+        ct = ContentType.objects.get_for_model(Comment)
+        
+        flag_data = [
+            {'comment_type': ct, 'comment_id': str(c.pk), 'user': moderator, 'flag': 'spam'}
+            for c in spam_comments
+        ]
+        
+        flags = bulk_create_flags_without_validation(flag_data)
+    """
+    from django_comments.models import CommentFlag
+    
+    flags = []
+    for data in flag_data_list:
+        flag = CommentFlag(**data)
+        flag._skip_clean_validation = True  # Skip expensive validation
+        flags.append(flag)
+    
+    return CommentFlag.objects.bulk_create(flags)
+
+
+def validate_comment_exists(comment_type, comment_id):
+    """
+    Utility function to check if a comment exists efficiently.
+    
+    Args:
+        comment_type: ContentType instance
+        comment_id: ID of the comment (string or int)
+    
+    Returns:
+        bool: True if comment exists
+    
+    Example:
+        from django.contrib.contenttypes.models import ContentType
+        from django_comments.models import Comment
+        
+        ct = ContentType.objects.get_for_model(Comment)
+        if validate_comment_exists(ct, '123-abc'):
+            # Comment exists
+            pass
+    """
+    try:
+        model_class = comment_type.model_class()
+        if not model_class:
+            return False
+        
+        return model_class.objects.filter(
+            pk=comment_id
+        ).only('pk').exists()
+    except Exception as e:
+        logger.error(f"Error validating comment existence: {e}")
+        return False
