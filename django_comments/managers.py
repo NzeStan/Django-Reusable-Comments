@@ -89,27 +89,6 @@ class CommentQuerySet(models.QuerySet):
                 content_type=content_type
             ).with_user_and_content_type()
     
-    def for_object_pk(self, content_type, object_pk):
-        """
-        ✅ NEW: Helper method for filtering by content_type and object PK.
-        Always converts object_pk to string for proper comparison.
-        
-        Args:
-            content_type: ContentType instance
-            object_pk: Primary key of the object (int, UUID, or string)
-        
-        Returns:
-            QuerySet filtered by content_type and object_id
-        
-        Example:
-            ct = ContentType.objects.get_for_model(Post)
-            comments = Comment.objects.for_object_pk(ct, post.pk)
-        """
-        return self.filter(
-            content_type=content_type,
-            object_id=str(object_pk)  # ✅ Always convert to string
-        )
-    
     def public(self):
         """
         Return only public, non-removed comments.

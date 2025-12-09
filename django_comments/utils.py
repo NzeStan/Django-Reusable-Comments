@@ -1009,36 +1009,3 @@ def bulk_create_flags_without_validation(flag_data_list):
         flags.append(flag)
     
     return CommentFlag.objects.bulk_create(flags)
-
-
-def validate_comment_exists(comment_type, comment_id):
-    """
-    Utility function to check if a comment exists efficiently.
-    
-    Args:
-        comment_type: ContentType instance
-        comment_id: ID of the comment (string or int)
-    
-    Returns:
-        bool: True if comment exists
-    
-    Example:
-        from django.contrib.contenttypes.models import ContentType
-        from django_comments.models import Comment
-        
-        ct = ContentType.objects.get_for_model(Comment)
-        if validate_comment_exists(ct, '123-abc'):
-            # Comment exists
-            pass
-    """
-    try:
-        model_class = comment_type.model_class()
-        if not model_class:
-            return False
-        
-        return model_class.objects.filter(
-            pk=comment_id
-        ).only('pk').exists()
-    except Exception as e:
-        logger.error(f"Error validating comment existence: {e}")
-        return False
