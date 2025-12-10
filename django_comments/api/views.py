@@ -195,25 +195,7 @@ class CommentViewSet(viewsets.ModelViewSet):
                 queryset=CommentFlag.objects.select_related('user')
             )
         )
-        
-        queryset = queryset.annotate(
-            revisions_count_annotated=models.Count(
-                'django_comments_commentrevision',
-                filter=models.Q(
-                    django_comments_commentrevision__comment_type=models.F('content_type'),
-                    django_comments_commentrevision__comment_id=models.F('id')
-                ),
-                distinct=True
-            ),
-            moderation_actions_count_annotated=models.Count(
-                'django_comments_moderationaction',
-                filter=models.Q(
-                    django_comments_moderationaction__comment_type=models.F('content_type'),
-                    django_comments_moderationaction__comment_id=models.F('id')
-                ),
-                distinct=True
-            )
-        )
+
         
         if self.action == 'retrieve':
             # For detail view, also prefetch children with their users

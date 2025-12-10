@@ -221,10 +221,12 @@ class CommentSerializer(serializers.ModelSerializer):
             logger.error(f"Failed to format comment {obj.pk}: {e}")
             return obj.content
 
-    def get_revisions_count(self, obj):
+    def get_revisions_count(self, obj) -> int:
+        """Get count of comment revisions."""
         return getattr(obj, 'revisions_count_annotated', 0)
 
-    def get_moderation_actions_count(self, obj):
+    def get_moderation_actions_count(self, obj) -> int:
+        """Get count of moderation actions."""
         return getattr(obj, 'moderation_actions_count_annotated', 0)
     
     def validate_parent(self, value):
@@ -543,7 +545,8 @@ class BannedUserSerializer(serializers.ModelSerializer):
         )
         read_only_fields = ('id', 'created_at', 'updated_at', 'is_active')
     
-    def get_is_permanent(self, obj):
+    def get_is_permanent(self, obj) -> bool:
+        """Check if ban is permanent (no expiration date)."""
         return obj.banned_until is None
 
 
