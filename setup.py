@@ -7,7 +7,7 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setup(
     name="django-reusable-comments",
-    version="0.1.0",
+    version="1.0.0",
     author="Ifeanyi Stanley Nnamani",
     author_email="nnamaniifeanyi10@gmail.com",
     description="A reusable Django comments app with DRF integration",
