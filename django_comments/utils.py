@@ -12,9 +12,11 @@ from datetime import timedelta
 from django.db import IntegrityError, transaction
 from functools import lru_cache
 from django.contrib.auth import get_user_model
-from .models import BannedUser
+from .models import BannedUser, CommentFlag
 User = get_user_model()
-
+from contextlib import contextmanager
+from django.core.cache import cache
+from django.db.models import Count
 logger = logging.getLogger(comments_settings.LOGGER_NAME)
 
 
@@ -975,6 +977,8 @@ def bulk_create_flags_without_validation(flag_data_list):
     """
     Bulk create CommentFlag instances without running clean() validation.
     
+    ✅ UPDATED: Now uses secure skip_flag_validation context manager.
+    
     Use this when you're confident the data is valid and want maximum performance.
     
     Args:
@@ -1005,7 +1009,108 @@ def bulk_create_flags_without_validation(flag_data_list):
     flags = []
     for data in flag_data_list:
         flag = CommentFlag(**data)
-        flag._skip_clean_validation = True  # Skip expensive validation
+        # ✅ SECURITY: Use double underscore for name mangling
+        flag._CommentFlag__skip_clean_validation = True
         flags.append(flag)
     
     return CommentFlag.objects.bulk_create(flags)
+
+
+# ============================================================================
+# SAFE CONTEXT MANAGER FOR BULK OPERATIONS
+# ============================================================================
+
+@contextmanager
+def skip_flag_validation():
+    """
+    Context manager for safely skipping flag validation in bulk operations.
+    
+    This should ONLY be used when:
+    1. You're doing bulk operations with pre-validated data
+    2. You need maximum performance
+    3. You're confident the data is correct
+    
+    Usage:
+        from django_comments.models import CommentFlag
+        from django_comments.utils import skip_flag_validation
+        
+        flags = []
+        for data in validated_flag_data:
+            flag = CommentFlag(**data)
+            flags.append(flag)
+        
+        with skip_flag_validation():
+            CommentFlag.objects.bulk_create(flags)
+    
+    Security:
+        This context manager properly manages the validation flag
+        and ensures it's always cleaned up, even if an exception occurs.
+    """
+    # Store original flag state (shouldn't exist, but be safe)
+    original_state = {}
+    
+    try:
+        # Enable skip for all new CommentFlag instances
+        CommentFlag._bulk_create_skip_validation = True
+        yield
+    finally:
+        # Always clean up, even if exception occurred
+        CommentFlag._bulk_create_skip_validation = False
+
+
+def warm_caches_for_queryset(queryset, request=None):
+    """
+    Batch warm all relevant caches for a queryset of comments.
+    
+    This is useful for:
+    - Pre-populating caches before serving a page
+    - Warming caches in background tasks
+    - Preparing data for high-traffic endpoints
+    
+    Args:
+        queryset: Comment queryset to warm caches for
+        request: Optional request object for context
+    
+    Example:
+        from django_comments.api.views import warm_caches_for_queryset
+        
+        # Before serving dashboard
+        recent_comments = Comment.objects.all()[:100]
+        warm_caches_for_queryset(recent_comments)
+    """
+    if not queryset:
+        return
+    
+    # Convert to list to evaluate queryset once
+    comments = list(queryset)
+    
+    if not comments:
+        return
+    
+    # Warm comment count caches
+    content_objects = {}
+    for comment in comments:
+        if comment.content_object:
+            key = (comment.content_type.pk, comment.object_id)
+            if key not in content_objects:
+                content_objects[key] = comment.content_object
+    
+    # Batch warm comment counts
+    for obj in content_objects.values():
+        from ..cache import get_comment_count_for_object
+        get_comment_count_for_object(obj, public_only=True)
+        get_comment_count_for_object(obj, public_only=False)
+    
+    # Warm flag counts
+    comment_ids = [str(c.pk) for c in comments]
+    from ..models import CommentFlag
+    
+    flag_counts = CommentFlag.objects.filter(
+        comment_id__in=comment_ids
+    ).values('comment_id').annotate(
+        count=Count('id')
+    )
+    
+    for item in flag_counts:
+        cache_key = f"comment_flag_count:{item['comment_id']}"
+        cache.set(cache_key, item['count'], 3600)

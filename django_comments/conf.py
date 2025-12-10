@@ -277,6 +277,34 @@ DEFAULTS = {
     
     # Auto-ban after N spam flags
     'AUTO_BAN_AFTER_SPAM_FLAGS': 3,
+
+    # ============================================================================
+    # GDPR COMPLIANCE
+    # ============================================================================
+    
+    # Enable GDPR compliance features
+    # Set to True to enable anonymization and data export features
+    'GDPR_ENABLED': True,
+    
+    # Data retention policy
+    # Enable automatic anonymization of old personal data
+    'GDPR_ENABLE_RETENTION_POLICY': False,  # Must be explicitly enabled
+    'GDPR_RETENTION_DAYS': 365,  # Days before personal data is anonymized
+    
+    # Anonymization settings
+    # Controls how data is anonymized during retention
+    'GDPR_ANONYMIZE_IP_ON_RETENTION': True,  # Anonymize IPs (192.168.1.100 -> 192.168.1.0)
+    'GDPR_ANONYMIZE_ON_USER_DELETE': True,  # Anonymize comments when user deleted
+    
+    # Data subject rights (GDPR Articles 15, 17, 20)
+    'GDPR_ALLOW_USER_DATA_EXPORT': True,  # Article 20: Right to data portability
+    'GDPR_ALLOW_USER_DATA_DELETION': True,  # Article 17: Right to erasure
+    
+    # Data collection transparency (GDPR Article 13)
+    # Disable these if you don't want to collect this personal data
+    'GDPR_COLLECT_IP_ADDRESS': True,  # Set to False to not collect IPs at all
+    'GDPR_COLLECT_USER_AGENT': True,  # Set to False to not collect user agents
+
 }
 
 

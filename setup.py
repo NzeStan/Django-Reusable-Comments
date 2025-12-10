@@ -45,6 +45,7 @@ setup(
         "Django>=3.2",
         "djangorestframework>=3.12.0",
         "django-filter>=21.1",
+        'bleach>=5.0.0',
     ],
     extras_require={
         'dev': [

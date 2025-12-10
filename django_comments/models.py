@@ -442,16 +442,25 @@ class CommentFlag(models.Model):
         """
         Validate the flag before saving.
         
-        OPTIMIZED: Skips validation if comment was already accessed via GenericForeignKey
-        or if skip_clean_validation flag is set (for bulk operations).
+        OPTIMIZED & SECURED:
+        - Skips validation if explicitly disabled via __skip_clean_validation
+        - Double underscore makes it harder to accidentally misuse
+        - Caches validation results per instance
+        - Minimal database queries
+        
+        Security Note:
+            The __skip_clean_validation flag should ONLY be used in controlled
+            bulk operations where data has already been validated. This is now
+            harder to misuse due to name mangling.
         """
         super(CommentFlag, self).clean()
         
-        # ✅ OPTIMIZATION 1: Skip validation if explicitly disabled (bulk operations)
-        if getattr(self, '_skip_clean_validation', False):
+        # ✅ SECURITY: Use double underscore for name mangling
+        # This makes the flag harder to access accidentally
+        if getattr(self, '_CommentFlag__skip_clean_validation', False):
             return
         
-        # ✅ OPTIMIZATION 2: Skip if comment object is already loaded via GenericForeignKey
+        # Skip if comment object is already loaded via GenericForeignKey
         if hasattr(self, '_comment_cache') and self._comment_cache is not None:
             return
         
@@ -459,12 +468,12 @@ class CommentFlag(models.Model):
         if not self.comment_type or not self.comment_id:
             return
         
-        # ✅ OPTIMIZATION 3: Cache validation result on this instance
+        # ✅ OPTIMIZATION: Cache validation result on this instance
         cache_key = f'_validated_{self.comment_type.pk}_{self.comment_id}'
         if getattr(self, cache_key, False):
             return
         
-        # ✅ OPTIMIZATION 4: Perform validation with minimal data fetch
+        # ✅ OPTIMIZATION: Perform validation with minimal data fetch
         try:
             model_class = self.comment_type.model_class()
             if model_class:
@@ -489,7 +498,7 @@ class CommentFlag(models.Model):
             raise ValidationError({
                 'comment': _('Invalid comment reference: {error}').format(error=str(e))
             })
-    
+
     def mark_reviewed(self, moderator, action, notes=''):
         """Mark this flag as reviewed."""
         self.reviewed = True
