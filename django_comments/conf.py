@@ -105,6 +105,12 @@ DEFAULTS = {
     # Enable email notifications
     'SEND_NOTIFICATIONS': False,
     
+    # Use Celery for async notifications (requires celery to be installed)
+    # When True, notifications are sent asynchronously via Celery tasks
+    # When False (default), notifications are sent synchronously
+    # Gracefully falls back to sync if Celery is not available
+    'USE_ASYNC_NOTIFICATIONS': False,
+    
     # Email subject template (can use {object} placeholder)
     'NOTIFICATION_SUBJECT': _('New comment on {object}'),
     

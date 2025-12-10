@@ -1,3 +1,15 @@
+"""
+Email notification system for django-reusable-comments.
+
+Supports both synchronous (default) and asynchronous (Celery) email sending.
+
+To enable async notifications:
+1. Install celery: pip install celery
+2. Set DJANGO_COMMENTS['USE_ASYNC_NOTIFICATIONS'] = True
+3. Start Celery workers
+
+Notifications will gracefully fall back to synchronous sending if Celery is not available.
+"""
 import logging
 from typing import List, Optional
 from django.core.mail import send_mail, EmailMultiAlternatives
@@ -11,11 +23,56 @@ logger = logging.getLogger(comments_settings.LOGGER_NAME)
 
 
 class CommentNotificationService:
-    """Service for sending comment notifications."""
+    """Service for sending comment notifications (sync or async)."""
     
     def __init__(self):
         self.enabled = comments_settings.SEND_NOTIFICATIONS
         self.from_email = comments_settings.DEFAULT_FROM_EMAIL
+        self.use_async = comments_settings.USE_ASYNC_NOTIFICATIONS
+        
+        # Check if Celery is actually available when async is enabled
+        if self.use_async:
+            try:
+                from . import tasks
+                self._tasks_available = hasattr(tasks, 'CELERY_AVAILABLE') and tasks.CELERY_AVAILABLE
+                if not self._tasks_available:
+                    logger.warning(
+                        "USE_ASYNC_NOTIFICATIONS is True but Celery is not installed. "
+                        "Falling back to synchronous notifications. "
+                        "Install celery: pip install celery"
+                    )
+            except ImportError:
+                self._tasks_available = False
+                logger.warning(
+                    "USE_ASYNC_NOTIFICATIONS is True but tasks module failed to import. "
+                    "Falling back to synchronous notifications."
+                )
+        else:
+            self._tasks_available = False
+    
+    def _dispatch_async(self, task_name: str, *args, **kwargs):
+        """
+        Dispatch a task to Celery if available, otherwise execute synchronously.
+        
+        Args:
+            task_name: Name of the task to execute
+            *args, **kwargs: Arguments to pass to the task
+        """
+        if not self.use_async or not self._tasks_available:
+            return False
+        
+        try:
+            from . import tasks
+            task_func = getattr(tasks, task_name, None)
+            if task_func and callable(task_func):
+                # Call .delay() to execute asynchronously
+                task_func.delay(*args, **kwargs)
+                logger.debug(f"Dispatched async task: {task_name}")
+                return True
+        except Exception as e:
+            logger.error(f"Failed to dispatch async task {task_name}: {e}. Falling back to sync.")
+        
+        return False
     
     def notify_new_comment(self, comment):
         """
@@ -27,6 +84,11 @@ class CommentNotificationService:
         if not self.enabled:
             return
         
+        # Try async dispatch
+        if self._dispatch_async('notify_new_comment_task', str(comment.pk)):
+            return
+        
+        # Fall back to synchronous
         try:
             # Get recipients
             recipients = self._get_comment_recipients(comment)
@@ -67,6 +129,11 @@ class CommentNotificationService:
         if not self.enabled:
             return
         
+        # Try async dispatch
+        if self._dispatch_async('notify_comment_reply_task', str(comment.pk), str(parent_comment.pk)):
+            return
+        
+        # Fall back to synchronous
         try:
             # Notify parent comment author
             if parent_comment.user and parent_comment.user.email:
@@ -110,6 +177,12 @@ class CommentNotificationService:
         if not self.enabled:
             return
         
+        # Try async dispatch
+        moderator_id = moderator.pk if moderator else None
+        if self._dispatch_async('notify_comment_approved_task', str(comment.pk), moderator_id):
+            return
+        
+        # Fall back to synchronous
         try:
             # Get author email
             if comment.user and comment.user.email:
@@ -149,6 +222,12 @@ class CommentNotificationService:
         if not self.enabled:
             return
         
+        # Try async dispatch
+        moderator_id = moderator.pk if moderator else None
+        if self._dispatch_async('notify_comment_rejected_task', str(comment.pk), moderator_id):
+            return
+        
+        # Fall back to synchronous
         try:
             # Get author email
             if comment.user and comment.user.email:
@@ -187,6 +266,11 @@ class CommentNotificationService:
         if not self.enabled:
             return
         
+        # Try async dispatch
+        if self._dispatch_async('notify_moderators_task', str(comment.pk)):
+            return
+        
+        # Fall back to synchronous
         try:
             # Get moderator emails
             recipients = self._get_moderator_emails()
@@ -347,7 +431,11 @@ class CommentNotificationService:
 notification_service = CommentNotificationService()
 
 
-# Convenience functions
+# ============================================================================
+# CONVENIENCE FUNCTIONS
+# These are the public API for sending notifications
+# ============================================================================
+
 def notify_new_comment(comment):
     """Notify about a new comment."""
     notification_service.notify_new_comment(comment)
@@ -372,6 +460,7 @@ def notify_moderators(comment):
     """Notify moderators about a comment needing approval."""
     notification_service.notify_moderators(comment)
 
+
 def notify_moderators_of_flag(comment, flag, flag_count):
     """
     Notify moderators that a comment has been flagged.
@@ -384,6 +473,17 @@ def notify_moderators_of_flag(comment, flag, flag_count):
     if not comments_settings.SEND_NOTIFICATIONS or not comments_settings.NOTIFY_ON_FLAG:
         return
     
+    # Try async dispatch
+    if notification_service.use_async and notification_service._tasks_available:
+        if notification_service._dispatch_async(
+            'notify_moderators_of_flag_task',
+            str(comment.pk),
+            str(flag.pk),
+            flag_count
+        ):
+            return
+    
+    # Fall back to synchronous
     try:
         # Get moderator emails
         recipients = notification_service._get_moderator_emails()
@@ -428,6 +528,12 @@ def notify_auto_hide(comment, flag_count):
     if not comments_settings.SEND_NOTIFICATIONS or not comments_settings.NOTIFY_ON_AUTO_HIDE:
         return
     
+    # Try async dispatch
+    if notification_service.use_async and notification_service._tasks_available:
+        if notification_service._dispatch_async('notify_auto_hide_task', str(comment.pk), flag_count):
+            return
+    
+    # Fall back to synchronous
     try:
         recipients = notification_service._get_moderator_emails()
         
@@ -467,6 +573,12 @@ def notify_user_banned(ban):
     if not comments_settings.SEND_NOTIFICATIONS:
         return
     
+    # Try async dispatch
+    if notification_service.use_async and notification_service._tasks_available:
+        if notification_service._dispatch_async('notify_user_banned_task', str(ban.pk)):
+            return
+    
+    # Fall back to synchronous
     try:
         if not ban.user.email:
             logger.debug(f"User {ban.user.pk} has no email, skipping ban notification")
@@ -514,6 +626,18 @@ def notify_user_unbanned(user, unbanned_by=None, original_ban_reason=''):
     if not comments_settings.SEND_NOTIFICATIONS:
         return
     
+    # Try async dispatch
+    if notification_service.use_async and notification_service._tasks_available:
+        unbanned_by_id = unbanned_by.pk if unbanned_by else None
+        if notification_service._dispatch_async(
+            'notify_user_unbanned_task',
+            user.pk,
+            unbanned_by_id,
+            original_ban_reason
+        ):
+            return
+    
+    # Fall back to synchronous
     try:
         if not user.email:
             logger.debug(f"User {user.pk} has no email, skipping unban notification")
