@@ -73,7 +73,6 @@ class CommentFlagSerializer(serializers.ModelSerializer):
         )
 
 
-
 class CreateCommentFlagSerializer(serializers.ModelSerializer):
     """
     Serializer for creating comment flags.
@@ -141,6 +140,8 @@ class CommentSerializer(serializers.ModelSerializer):
     
     ✅ SECURITY: is_public and is_removed are READ-ONLY
     Only moderators can change these via approve/reject endpoints.
+    
+    ✅ ENHANCED: Long validate() method refactored into focused helper methods.
     """
 
     content_type = serializers.CharField(
@@ -320,117 +321,221 @@ class CommentSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Invalid characters in name")
         return value
     
+    # ============================================================================
+    # ✅ REFACTORED: validate() extracted into focused helper methods
+    # ============================================================================
+    
     def validate(self, data):
         """
         Validate the comment data.
-        - Enforce anonymous rules.
-        - Autofill user data for authenticated users.
-        - Apply moderation settings.
-        - Check bans and auto-approval.
         
-        ✅ SECURITY FIX: 
-        - Ignore any user-provided is_public/is_removed values
-        - Always apply moderation logic server-side
+        ✅ REFACTORED: Now uses helper methods for better organization.
+        Each helper method has a single responsibility and is easy to test.
+        
+        This method orchestrates the validation flow:
+        1. Clean security fields
+        2. Skip validation for partial updates
+        3. Handle anonymous vs authenticated comments
+        4. Check if user is banned
+        5. Apply moderation rules
         """
-        # ✅ SECURITY: Remove any user-provided is_public/is_removed
-        # These should ONLY be set by the system or moderators
-        data.pop('is_public', None)
-        data.pop('is_removed', None)
+        # Step 1: Remove any user-provided security fields
+        data = self._clean_security_fields(data)
         
+        # Step 2: Skip remaining validation for partial updates
         if self.partial and 'user' not in data:
             return data
-
+        
+        # Get user and request
         request = self.context.get("request")
         user = data.get("user")
-
-        # If explicitly passed or auto-filled by CurrentUserDefault
+        
+        # Normalize user (None if not authenticated)
         if user and not getattr(user, "is_authenticated", False):
             data["user"] = None
-            user = None  # reflect the change locally
-
+            user = None
+        
         is_anonymous = not user
-
-        # -----------------------------------------
-        # 👤 Handle anonymous vs authenticated
-        # -----------------------------------------
+        
+        # Step 3: Handle anonymous vs authenticated comments
         if is_anonymous:
-            if not comments_settings.ALLOW_ANONYMOUS:
-                raise serializers.ValidationError(
-                    {"detail": _("Anonymous comments are not allowed.")}
-                )
-
-            if not data.get("user_name"):
-                data["user_name"] = _("Anonymous")
-
-            if not data.get("user_email"):
-                raise serializers.ValidationError(
-                    {"user_email": _("Email is required for anonymous users.")}
-                )
-
+            data = self._handle_anonymous_comment(data)
         else:
-            # Authenticated: autofill from request.user
-            data["user_name"] = user.get_full_name() or user.get_username()
-            data["user_email"] = user.email
-
-        # -----------------------------------------
-        # 🚫 Check if user is banned
-        # ✅ UPDATED: Use BannedUser.check_user_banned() instead of utils
-        # -----------------------------------------
-        user_is_authenticated = bool(user and getattr(user, "is_authenticated", False))
-        if user_is_authenticated:
-            # ✅ NEW: Import from models instead of utils
-            is_banned, ban_info = BannedUser.check_user_banned(user)
-
-            if is_banned:
-                if ban_info.get("is_permanent"):
-                    raise serializers.ValidationError({
-                        "detail": _(
-                            "You are permanently banned from commenting. Reason: {reason}"
-                        ).format(reason=ban_info.get("reason", _("No reason provided")))
-                    })
-                else:
-                    banned_until = ban_info.get("banned_until")
-                    until_str = banned_until.strftime("%Y-%m-%d") if banned_until else _("an unknown date")
-
-                    raise serializers.ValidationError({
-                        "detail": _(
-                            "You are banned from commenting until {until}. Reason: {reason}"
-                        ).format(
-                            until=until_str,
-                            reason=ban_info.get("reason", _("No reason provided"))
-                        )
-                    })
-
-        # -----------------------------------------
-        # 🔒 Apply moderation logic (NEW COMMENTS ONLY)
-        # ✅ SECURITY FIX: Properly enforce MODERATOR_REQUIRED
-        # -----------------------------------------
-        if not self.instance:  # Only for new comments
-            # Default: moderation required
-            is_public = False
-            
-            # Check if user is trusted and can bypass moderation
-            if user_is_authenticated:
-                from ..utils import should_auto_approve_user
-                if should_auto_approve_user(user):
-                    is_public = True
-                    import logging
-                    logger = logging.getLogger(comments_settings.LOGGER_NAME)
-                    logger.info(f"Auto-approved comment by trusted user {user.pk}")
-            
-            # If moderation is not required globally, approve by default
-            if not comments_settings.MODERATOR_REQUIRED:
-                is_public = True
-            
-            # ✅ Set is_public based on our server-side logic
-            # This CANNOT be overridden by user input
-            data["is_public"] = is_public
-            
-            # ✅ New comments are never removed by default
-            data["is_removed"] = False
-
+            data = self._handle_authenticated_comment(data, user)
+        
+        # Step 4: Check if user is banned
+        if user:
+            self._validate_user_not_banned(user)
+        
+        # Step 5: Apply moderation logic (NEW COMMENTS ONLY)
+        if not self.instance:
+            data = self._apply_moderation_rules(data, user)
+        
         return data
-
+    
+    def _clean_security_fields(self, data):
+        """
+        Remove security-sensitive fields from user input.
+        
+        ✅ SECURITY: is_public and is_removed can ONLY be set by:
+        - The system during validation
+        - Moderators via approve/reject endpoints
+        
+        This prevents users from bypassing moderation by setting these fields.
+        
+        Args:
+            data: Validated data dict
+        
+        Returns:
+            Cleaned data dict with security fields removed
+        """
+        data.pop('is_public', None)
+        data.pop('is_removed', None)
+        return data
+    
+    def _handle_anonymous_comment(self, data):
+        """
+        Handle validation for anonymous comments.
+        
+        Checks:
+        - Anonymous comments are allowed (ALLOW_ANONYMOUS setting)
+        - Email is provided (required for anonymous)
+        - Sets default name if not provided
+        
+        Args:
+            data: Validated data dict
+        
+        Returns:
+            Updated data dict with anonymous user fields
+        
+        Raises:
+            ValidationError: If anonymous comments not allowed or email missing
+        """
+        if not comments_settings.ALLOW_ANONYMOUS:
+            raise serializers.ValidationError(
+                {"detail": _("Anonymous comments are not allowed.")}
+            )
+        
+        # Set default name if not provided
+        if not data.get("user_name"):
+            data["user_name"] = _("Anonymous")
+        
+        # Require email for anonymous users
+        if not data.get("user_email"):
+            raise serializers.ValidationError(
+                {"user_email": _("Email is required for anonymous users.")}
+            )
+        
+        return data
+    
+    def _handle_authenticated_comment(self, data, user):
+        """
+        Handle validation for authenticated user comments.
+        
+        Auto-fills user information from the authenticated user object:
+        - user_name: Full name or username
+        - user_email: User's email address
+        
+        Args:
+            data: Validated data dict
+            user: Authenticated User instance
+        
+        Returns:
+            Updated data dict with user information
+        """
+        data["user_name"] = user.get_full_name() or user.get_username()
+        data["user_email"] = user.email
+        return data
+    
+    def _validate_user_not_banned(self, user):
+        """
+        Check if user is banned from commenting.
+        
+        ✅ SINGLE SOURCE OF TRUTH: Uses BannedUser.check_user_banned()
+        
+        Raises detailed validation errors for:
+        - Permanent bans
+        - Active temporary bans
+        
+        Args:
+            user: User instance to check
+        
+        Raises:
+            ValidationError: If user is currently banned with detailed message
+        """
+        is_banned, ban_info = BannedUser.check_user_banned(user)
+        
+        if not is_banned:
+            return
+        
+        # Construct detailed error message
+        if ban_info.get("is_permanent"):
+            raise serializers.ValidationError({
+                "detail": _(
+                    "You are permanently banned from commenting. Reason: {reason}"
+                ).format(reason=ban_info.get("reason", _("No reason provided")))
+            })
+        
+        # Temporary ban
+        banned_until = ban_info.get("banned_until")
+        until_str = banned_until.strftime("%Y-%m-%d") if banned_until else _("an unknown date")
+        
+        raise serializers.ValidationError({
+            "detail": _(
+                "You are banned from commenting until {until}. Reason: {reason}"
+            ).format(
+                until=until_str,
+                reason=ban_info.get("reason", _("No reason provided"))
+            )
+        })
+    
+    def _apply_moderation_rules(self, data, user):
+        """
+        Apply moderation logic to determine if comment should be public.
+        
+        Moderation hierarchy:
+        1. If user is trusted (staff/trusted groups/auto-approve threshold) → Auto-approve
+        2. If MODERATOR_REQUIRED is False → Auto-approve
+        3. Otherwise → Requires moderation (is_public=False)
+        
+        This method enforces server-side moderation rules that cannot be
+        bypassed by user input.
+        
+        Args:
+            data: Validated data dict
+            user: User instance (may be None for anonymous)
+        
+        Returns:
+            Updated data dict with is_public and is_removed set
+        """
+        # Default: moderation required
+        is_public = False
+        
+        # Check if user is trusted and can bypass moderation
+        if user:
+            from ..utils import should_auto_approve_user
+            if should_auto_approve_user(user):
+                is_public = True
+                import logging
+                logger = logging.getLogger(comments_settings.LOGGER_NAME)
+                logger.info(f"Auto-approved comment by trusted user {user.pk}")
+        
+        # If moderation is not required globally, approve by default
+        if not comments_settings.MODERATOR_REQUIRED:
+            is_public = True
+        
+        # ✅ Set is_public based on our server-side logic
+        # This CANNOT be overridden by user input
+        data["is_public"] = is_public
+        
+        # ✅ New comments are never removed by default
+        data["is_removed"] = False
+        
+        return data
+    
+    # ============================================================================
+    # END OF REFACTORED SECTION
+    # ============================================================================
 
     def get_content_object_info(self, obj) -> Optional[Dict[str, Any]]:
         """
@@ -527,6 +632,7 @@ class CommentSerializer(serializers.ModelSerializer):
         # Use the default update behavior for remaining fields
         return super().update(instance, validated_data)
     
+
 class BannedUserSerializer(serializers.ModelSerializer):
     """
     Serializer for BannedUser model.

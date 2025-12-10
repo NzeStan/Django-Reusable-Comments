@@ -66,7 +66,6 @@ def get_user_groups_cached(user, request):
     
     return request._cache[cache_key]
 
-# ADD this helper function at the TOP of views.py (after imports, before CommentViewSet class)
 
 def validate_comment_ids(comment_ids, max_count=100):
     """
@@ -142,11 +141,14 @@ def validate_comment_ids(comment_ids, max_count=100):
     
     return validated_ids
 
+
 class CommentViewSet(viewsets.ModelViewSet):
     """
     API endpoints for managing comments.
     Optimized with select_related, prefetch_related, and annotations.
     validates ordering against ALLOWED_SORTS.
+    
+    ✅ ENHANCED: Long methods refactored into focused helper methods.
     """
     serializer_class = CommentSerializer
     permission_classes = [CommentPermission]
@@ -179,31 +181,57 @@ class CommentViewSet(viewsets.ModelViewSet):
         # Return default
         return [comments_settings.DEFAULT_SORT]
     
+    # ============================================================================
+    # ✅ REFACTORED: get_queryset() extracted into focused helper methods
+    # ============================================================================
+    
     def get_queryset(self):
         """
         Get optimized queryset with all related data preloaded.
         Reduces N+1 queries dramatically.
+        
+        ✅ REFACTORED: Now uses helper methods for better organization.
+        Each helper method has a single responsibility and is easy to test.
         """
         queryset = Comment.objects.all()
-        user = self.request.user
+        queryset = self._apply_query_optimizations(queryset)
+        queryset = self._apply_visibility_filters(queryset)
+        queryset = self._apply_ordering(queryset)
+        return queryset
+    
+    def _apply_query_optimizations(self, queryset):
+        """
+        Apply select_related and prefetch_related optimizations.
         
+        This method handles all database query optimizations:
+        - Foreign key optimization with select_related
+        - Reverse relationship optimization with prefetch_related
+        - Action-specific optimizations (e.g., children for detail view)
+        
+        Args:
+            queryset: Base Comment queryset
+        
+        Returns:
+            Optimized queryset with minimal database queries
+        """
+        # Optimize foreign key access
         queryset = queryset.select_related(
-            'user',              
-            'content_type',     
-            'parent',            
-            'parent__user'    
+            'user',
+            'content_type',
+            'parent',
+            'parent__user'
         )
         
+        # Optimize flags access
         queryset = queryset.prefetch_related(
             models.Prefetch(
                 'flags',
                 queryset=CommentFlag.objects.select_related('user')
             )
         )
-
         
+        # For detail view, prefetch children
         if self.action == 'retrieve':
-            # For detail view, also prefetch children with their users
             queryset = queryset.prefetch_related(
                 models.Prefetch(
                     'children',
@@ -214,30 +242,103 @@ class CommentViewSet(viewsets.ModelViewSet):
                 )
             )
         
-        if not user.is_staff and not user.is_superuser:
-            can_see_non_public = False
-            
-            if not user.is_anonymous:
-                user_groups = get_user_groups_cached(user, self.request)
-                
-                # Check if user is in privileged groups
-                privileged_groups = set(comments_settings.CAN_VIEW_NON_PUBLIC_COMMENTS)
-                can_see_non_public = bool(user_groups & privileged_groups)
-            
-            if not can_see_non_public:
-                if user.is_anonymous:
-                    queryset = queryset.filter(is_public=True, is_removed=False)
-                else:
-                    queryset = queryset.filter(
-                        models.Q(is_public=True, is_removed=False) |
-                        models.Q(user=user)
-                    )
-        
-        # Apply validated ordering
-        ordering = self.get_ordering()
-        queryset = queryset.order_by(*ordering)
-        
         return queryset
+    
+    def _apply_visibility_filters(self, queryset):
+        """
+        Apply visibility filters based on user permissions.
+        
+        This method implements the permission hierarchy:
+        1. Staff/superusers see everything
+        2. Privileged group members see all comments
+        3. Regular users see public comments + their own
+        4. Anonymous users see only public comments
+        
+        Args:
+            queryset: Comment queryset
+        
+        Returns:
+            Filtered queryset based on user permissions
+        """
+        user = self.request.user
+        
+        # Staff and superusers see everything
+        if user.is_staff or user.is_superuser:
+            return queryset
+        
+        # Check if user can see non-public comments
+        can_see_non_public = self._user_can_see_non_public(user)
+        
+        if can_see_non_public:
+            return queryset
+        
+        # Apply visibility filters for regular users
+        return self._filter_for_regular_user(queryset, user)
+    
+    def _user_can_see_non_public(self, user):
+        """
+        Check if user belongs to privileged groups that can see non-public comments.
+        
+        Checks the CAN_VIEW_NON_PUBLIC_COMMENTS setting to determine if user
+        has elevated viewing permissions.
+        
+        Args:
+            user: User instance
+        
+        Returns:
+            bool: True if user can see non-public comments
+        """
+        if user.is_anonymous:
+            return False
+        
+        user_groups = get_user_groups_cached(user, self.request)
+        privileged_groups = set(comments_settings.CAN_VIEW_NON_PUBLIC_COMMENTS)
+        
+        return bool(user_groups & privileged_groups)
+    
+    def _filter_for_regular_user(self, queryset, user):
+        """
+        Apply filters for regular (non-privileged) users.
+        
+        Regular users can see:
+        - All public, non-removed comments (everyone)
+        - Their own comments regardless of status (authenticated only)
+        
+        Args:
+            queryset: Comment queryset
+            user: User instance
+        
+        Returns:
+            Filtered queryset
+        """
+        if user.is_anonymous:
+            # Anonymous users only see public comments
+            return queryset.filter(is_public=True, is_removed=False)
+        
+        # Authenticated users see public comments + their own
+        return queryset.filter(
+            models.Q(is_public=True, is_removed=False) |
+            models.Q(user=user)
+        )
+    
+    def _apply_ordering(self, queryset):
+        """
+        Apply validated ordering to queryset.
+        
+        Uses get_ordering() which validates against ALLOWED_SORTS setting.
+        
+        Args:
+            queryset: Comment queryset
+        
+        Returns:
+            Ordered queryset
+        """
+        ordering = self.get_ordering()
+        return queryset.order_by(*ordering)
+    
+    # ============================================================================
+    # END OF REFACTORED SECTION
+    # ============================================================================
     
     def create(self, request, *args, **kwargs):
         """
