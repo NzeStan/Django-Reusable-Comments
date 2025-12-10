@@ -276,12 +276,13 @@ class Comment(AbstractCommentBase, BaseCommentMixin):
 
 
 # ============================================================================
-# COMMENT FLAG MODEL
+# COMMENT FLAG MODEL - UUID Primary Key
 # ============================================================================
 
 class CommentFlag(models.Model):
     """
     Records user flags for comments that may be inappropriate.
+    ✅ UPDATED: Now uses UUID primary key for consistency.
     """
     
     FLAG_CHOICES = (
@@ -295,6 +296,14 @@ class CommentFlag(models.Model):
         ('offensive', _('Offensive')),
         ('inappropriate', _('Inappropriate')),
         ('other', _('Other')),
+    )
+    
+    # ✅ UUID Primary Key
+    id = models.UUIDField(
+        primary_key=True,
+        default=uuid.uuid4,
+        editable=False,
+        verbose_name=_("ID")
     )
     
     # Timestamps
@@ -435,29 +444,6 @@ class CommentFlag(models.Model):
         
         OPTIMIZED: Skips validation if comment was already accessed via GenericForeignKey
         or if skip_clean_validation flag is set (for bulk operations).
-        
-        Performance optimizations:
-        - Checks _comment_cache to see if comment object is already loaded
-        - Caches validation results per instance
-        - Uses only('pk') for minimal data fetch
-        - Provides _skip_clean_validation flag for bulk operations
-        
-        Examples:
-            # Normal usage (validation happens automatically)
-            flag = CommentFlag(comment_type=ct, comment_id='123', user=user, flag='spam')
-            flag.full_clean()  # Validates once
-            
-            # Bulk operation (skip validation)
-            flags = []
-            for data in bulk_data:
-                flag = CommentFlag(**data)
-                flag._skip_clean_validation = True  # Skip expensive check
-                flags.append(flag)
-            CommentFlag.objects.bulk_create(flags)
-            
-            # Comment already loaded (no validation needed)
-            flag = comment.flags.first()  # comment is already in _comment_cache
-            flag.full_clean()  # Skips DB query
         """
         super(CommentFlag, self).clean()
         
@@ -466,8 +452,6 @@ class CommentFlag(models.Model):
             return
         
         # ✅ OPTIMIZATION 2: Skip if comment object is already loaded via GenericForeignKey
-        # When you access flag.comment, Django caches it in _comment_cache
-        # If it's there, we know the comment exists
         if hasattr(self, '_comment_cache') and self._comment_cache is not None:
             return
         
@@ -476,7 +460,6 @@ class CommentFlag(models.Model):
             return
         
         # ✅ OPTIMIZATION 3: Cache validation result on this instance
-        # Prevents duplicate checks if clean() is called multiple times
         cache_key = f'_validated_{self.comment_type.pk}_{self.comment_id}'
         if getattr(self, cache_key, False):
             return
@@ -485,8 +468,6 @@ class CommentFlag(models.Model):
         try:
             model_class = self.comment_type.model_class()
             if model_class:
-                # Use only('pk') to fetch just the primary key, not all fields
-                # This is much faster than a full object fetch
                 exists = model_class.objects.filter(
                     pk=self.comment_id
                 ).only('pk').exists()
@@ -502,11 +483,8 @@ class CommentFlag(models.Model):
                 setattr(self, cache_key, True)
                 
         except ValidationError:
-            # Re-raise validation errors as-is
             raise
         except Exception as e:
-            # ✅ OPTIMIZATION 5: Proper exception handling
-            # Log unexpected errors but convert to ValidationError
             logger.error(f"Error validating comment reference: {e}")
             raise ValidationError({
                 'comment': _('Invalid comment reference: {error}').format(error=str(e))
@@ -523,14 +501,24 @@ class CommentFlag(models.Model):
 
 
 # ============================================================================
-# BANNED USER MODEL
+# BANNED USER MODEL - UUID Primary Key
 # ============================================================================
 
 class BannedUser(models.Model):
     """
     Track users who are banned from commenting.
     Supports both permanent and temporary bans.
+    ✅ UPDATED: Now uses UUID primary key for consistency.
     """
+    
+    # ✅ UUID Primary Key
+    id = models.UUIDField(
+        primary_key=True,
+        default=uuid.uuid4,
+        editable=False,
+        verbose_name=_("ID")
+    )
+    
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
@@ -590,12 +578,6 @@ class BannedUser(models.Model):
         Check if a user is currently banned (simple boolean check).
         
         For detailed ban info, use check_user_banned() instead.
-        
-        Args:
-            user: User instance
-        
-        Returns:
-            bool: True if user is currently banned
         """
         is_banned, _ = cls.check_user_banned(user)
         return is_banned
@@ -604,30 +586,7 @@ class BannedUser(models.Model):
     def check_user_banned(cls, user):
         """
         Check if user is banned with detailed information.
-        
         ✅ SINGLE SOURCE OF TRUTH for ban checking.
-        This replaces the duplicate implementation in utils.py.
-        
-        Args:
-            user: User instance
-        
-        Returns:
-            tuple: (is_banned: bool, ban_info: dict or None)
-                   ban_info contains:
-                   - reason: str - Reason for ban
-                   - banned_until: datetime or None - When ban expires (None = permanent)
-                   - is_permanent: bool - Whether ban is permanent
-                   - banned_by: User - Who issued the ban
-                   - ban_object: BannedUser - The full ban object
-                   
-        Example:
-            >>> from django_comments.models import BannedUser
-            >>> is_banned, ban_info = BannedUser.check_user_banned(request.user)
-            >>> if is_banned:
-            >>>     if ban_info['is_permanent']:
-            >>>         print(f"Permanently banned: {ban_info['reason']}")
-            >>>     else:
-            >>>         print(f"Banned until {ban_info['banned_until']}")
         """
         if not user or not user.is_authenticated:
             return False, None
@@ -646,21 +605,32 @@ class BannedUser(models.Model):
                 'banned_until': active_ban.banned_until,
                 'is_permanent': active_ban.banned_until is None,
                 'banned_by': active_ban.banned_by,
-                'ban_object': active_ban,  # Include full object if needed
+                'ban_object': active_ban,
             }
             return True, ban_info
         
         return False, None
 
+
 # ============================================================================
-# COMMENT REVISION MODEL
+# COMMENT REVISION MODEL - UUID Primary Key
 # ============================================================================
 
 class CommentRevision(models.Model):
     """
     Track edit history of comments.
     Stores previous versions for audit trail.
+    ✅ UPDATED: Now uses UUID primary key for consistency.
     """
+    
+    # ✅ UUID Primary Key
+    id = models.UUIDField(
+        primary_key=True,
+        default=uuid.uuid4,
+        editable=False,
+        verbose_name=_("ID")
+    )
+    
     # GenericForeignKey to support Comment
     comment_type = models.ForeignKey(
         ContentType,
@@ -705,14 +675,16 @@ class CommentRevision(models.Model):
 
 
 # ============================================================================
-# MODERATION ACTION MODEL
+# MODERATION ACTION MODEL - UUID Primary Key
 # ============================================================================
 
 class ModerationAction(models.Model):
     """
     Log all moderation actions for accountability.
     Tracks who did what and when.
+    ✅ UPDATED: Now uses UUID primary key for consistency.
     """
+    
     ACTION_CHOICES = (
         ('approved', _('Approved')),
         ('rejected', _('Rejected')),
@@ -722,6 +694,14 @@ class ModerationAction(models.Model):
         ('unflagged', _('Unflagged')),
         ('banned_user', _('Banned User')),
         ('unbanned_user', _('Unbanned User')),
+    )
+    
+    # ✅ UUID Primary Key
+    id = models.UUIDField(
+        primary_key=True,
+        default=uuid.uuid4,
+        editable=False,
+        verbose_name=_("ID")
     )
     
     # GenericForeignKey to support Comment
