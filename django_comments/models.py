@@ -209,44 +209,7 @@ class BaseCommentMixin(models.Model):
                     f"thread_id: {self.thread_id}"
                 )
     
-    def delete(self, *args, **kwargs):
-        """
-        Override delete to manually cascade to GenericRelation objects.
-        
-        GenericRelation doesn't automatically cascade deletes like ForeignKey.
-        We need to manually delete related flags before deleting the comment.
-        """
-        # BULLETPROOF APPROACH: Use ContentType to get CommentFlag model
-        from django.contrib.contenttypes.models import ContentType
-        
-        # Get ContentType for this Comment model
-        comment_ct = ContentType.objects.get_for_model(self.__class__)
-        
-        # Get ContentType for CommentFlag model  
-        try:
-            flag_ct = ContentType.objects.get(
-                app_label='django_comments',
-                model='commentflag'
-            )
-            # Get the actual model class
-            CommentFlagModel = flag_ct.model_class()
-            
-            # Delete all flags pointing to this comment
-            if CommentFlagModel:
-                deleted_count = CommentFlagModel.objects.filter(
-                    comment_type=comment_ct,
-                    comment_id=str(self.pk)
-                ).delete()
-                logger.debug(f"Deleted {deleted_count[0]} flags for comment {self.pk}")
-        except ContentType.DoesNotExist:
-            # CommentFlag model doesn't exist yet (migrations?)
-            logger.warning("CommentFlag model not found, skipping flag deletion")
-        except Exception as e:
-            # Log but don't fail the delete
-            logger.error(f"Error deleting flags for comment {self.pk}: {e}")
-        
-        # Now delete the comment
-        return super().delete(*args, **kwargs)
+
     
     def get_user_name(self):
         """Return the user's name or 'Anonymous'."""
