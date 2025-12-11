@@ -96,11 +96,12 @@ class CreateCommentFlagSerializer(serializers.ModelSerializer):
         reason = validated_data.get('reason', '')
         
         try:
-            flag, created = CommentFlag.objects.update_or_create(
+            # Use the manager's create_or_get_flag method which handles GenericForeignKey properly
+            flag, created = CommentFlag.objects.create_or_get_flag(
                 comment=comment,
                 user=user,
                 flag=flag_type,
-                defaults={'reason': reason}
+                reason=reason
             )
             return flag
         except Exception as e:
