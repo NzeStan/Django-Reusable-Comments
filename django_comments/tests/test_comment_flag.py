@@ -676,7 +676,7 @@ class CommentFlagIndexTests(BaseCommentTestCase):
             comment_id=str(comment.pk)
         )
         
-        self.assertEqual(flags.count(), 10)
+        self.assertEqual(flags.count(), 3)  # We created 3 flags
     
     def test_filter_by_user_and_flag_uses_index(self):
         """Test filtering by user and flag (indexed)."""

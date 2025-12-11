@@ -111,6 +111,15 @@ class BaseCommentMixin(models.Model):
             raise ValidationError({
                 'content': _(f'Comment exceeds maximum length of {max_length} characters.')
             })
+        # ✅ Validate anonymous comments have user_name or user_email
+        if not self.user and not self.user_name and not self.user_email:
+            raise ValidationError({
+                'user_name': _('Anonymous comments must provide either a name or email address.')
+            })
+        
+        # ✅ Validate parent if it exists
+        if self.parent and self._state.adding:
+            self._validate_parent()
     
     def _validate_parent(self):
         """Validate parent comment state."""
@@ -158,8 +167,7 @@ class BaseCommentMixin(models.Model):
         """
         is_new = self._state.adding
         
-        # Call clean() for validation on new comments
-        # (can be skipped with skip_validation=True for fixtures/migrations)
+        # Call clean() for validation (can skip with skip_validation=True)
         if is_new and not kwargs.pop('skip_validation', False):
             self.clean()
         
@@ -172,7 +180,7 @@ class BaseCommentMixin(models.Model):
         with transaction.atomic():
             if self.parent:
                 # === CHILD COMMENT ===
-                self._validate_parent()
+                # _validate_parent() already called in clean()
                 self.thread_id = self.parent.thread_id
                 self.path = 'PENDING'
                 super().save(*args, **kwargs)
@@ -208,10 +216,19 @@ class BaseCommentMixin(models.Model):
         GenericRelation doesn't automatically cascade deletes like ForeignKey.
         We need to manually delete related flags before deleting the comment.
         """
-        # Delete related flags using the GenericRelation
-        # This is the cleanest way - no circular imports!
-        if hasattr(self, 'flags'):
-            self.flags.all().delete()
+        # Delete related flags - query them directly
+        from django.apps import apps
+        from django.contrib.contenttypes.models import ContentType
+        
+        # Get ContentType for this model
+        ct = ContentType.objects.get_for_model(self.__class__)
+        
+        # Get CommentFlag model using apps.get_model (avoids circular import)
+        CommentFlag = apps.get_model('django_comments', 'CommentFlag')
+        CommentFlag.objects.filter(
+            comment_type=ct,
+            comment_id=str(self.pk)
+        ).delete()
         
         # Now delete the comment
         return super().delete(*args, **kwargs)
