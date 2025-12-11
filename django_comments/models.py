@@ -96,6 +96,25 @@ class BaseCommentMixin(models.Model):
         """
         super().clean()
         
+        # ✅ Validate content is not empty or whitespace-only
+        if not self.content or not self.content.strip():
+            raise ValidationError({
+                'content': _('Comment content cannot be empty or contain only whitespace.')
+            })
+        
+        # ✅ Validate max length
+        max_length = comments_settings.MAX_COMMENT_LENGTH
+        if max_length and len(self.content) > max_length:
+            raise ValidationError({
+                'content': _(f'Comment exceeds maximum length of {max_length} characters.')
+            })
+        
+        # ✅ Validate anonymous comments have name or email
+        if not self.user and not self.user_name and not self.user_email:
+            raise ValidationError({
+                'user': _('Anonymous comments must include either user_name or user_email.')
+            })
+        
         # Validate parent if set
         if self.parent:
             self._validate_parent()
@@ -128,7 +147,8 @@ class BaseCommentMixin(models.Model):
         max_depth = comments_settings.MAX_COMMENT_DEPTH
         if max_depth is not None:
             parent_depth = self.parent.depth
-            if parent_depth >= max_depth:
+            # ✅ FIX: Child will be at parent_depth + 1, so check if that exceeds max
+            if parent_depth + 1 > max_depth:
                 raise ValidationError({
                     'parent': _(
                         f"Maximum thread depth of {max_depth} exceeded. "
@@ -327,7 +347,8 @@ class CommentFlag(models.Model):
     # User who flagged
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
-        on_delete=models.CASCADE,
+        on_delete=models.SET_NULL,  # ✅ This preserves the flag
+        null=True,  # ✅ Allow null when user is deleted
         verbose_name=_('User'),
         related_name='comment_flags',
         help_text=_('The user who flagged this comment')
@@ -429,7 +450,10 @@ class CommentFlag(models.Model):
         """String representation."""
         try:
             comment_pk = self.comment_id
-            user_name = self.user.get_username() if self.user else 'Unknown'
+            if self.user:
+                user_name = self.user.get_username()
+            else:
+                user_name = 'Deleted User'
             return _('{user} flagged comment {comment} as {flag}').format(
                 user=user_name,
                 comment=comment_pk,
@@ -501,6 +525,14 @@ class CommentFlag(models.Model):
 
     def mark_reviewed(self, moderator, action, notes=''):
         """Mark this flag as reviewed."""
+        # ✅ Validate action is valid
+        valid_actions = [choice[0] for choice in self.REVIEW_ACTION_CHOICES]
+        if action and action not in valid_actions:
+            raise ValueError(
+                f"Invalid review action '{action}'. "
+                f"Must be one of: {', '.join(valid_actions)}"
+            )
+        
         self.reviewed = True
         self.reviewed_by = moderator
         self.reviewed_at = timezone.now()
@@ -562,6 +594,16 @@ class BannedUser(models.Model):
         verbose_name = _('Banned User')
         verbose_name_plural = _('Banned Users')
         ordering = ['-created_at']
+        
+        # ✅ UNIQUE CONSTRAINT: Only one ban per user
+        constraints = [
+            models.UniqueConstraint(
+                fields=['user'],
+                name='unique_banned_user',
+                violation_error_message=_('This user is already banned.')
+            )
+        ]
+        
         indexes = [
             models.Index(fields=['user', 'banned_until'], name='django_comm_user_id_ban_idx'),
         ]
@@ -573,6 +615,23 @@ class BannedUser(models.Model):
                 date=self.banned_until.strftime('%Y-%m-%d')
             )
         return _("{user} permanently banned").format(user=self.user.get_username())
+    
+    def clean(self):
+        """Validate ban before saving."""
+        super().clean()
+        
+        # Validate reason is not empty
+        if not self.reason or not self.reason.strip():
+            raise ValidationError({
+                'reason': _('Ban reason cannot be empty.')
+            })
+        
+        # Validate banned_until is not in the past
+        if self.banned_until is not None:
+            if self.banned_until <= timezone.now():
+                raise ValidationError({
+                    'banned_until': _('Ban expiration date cannot be in the past.')
+                })
     
     @property
     def is_active(self):

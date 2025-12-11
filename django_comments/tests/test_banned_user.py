@@ -18,7 +18,7 @@ from django.db import IntegrityError
 from django.test import TestCase
 from django.utils import timezone
 from datetime import timedelta
-
+from django.db import IntegrityError, transaction
 from .base import BaseCommentTestCase
 
 User = get_user_model()
@@ -136,7 +136,8 @@ class BannedUserValidationTests(BaseCommentTestCase):
         ban = self.BannedUser(
             user=self.regular_user,
             banned_until=future_date,
-            reason='7-day ban'
+            reason='7-day ban',
+            banned_by=self.moderator  # Add this line
         )
         ban.full_clean()  # Should not raise
         ban.save()

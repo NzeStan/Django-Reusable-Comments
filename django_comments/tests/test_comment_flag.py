@@ -15,9 +15,7 @@ import uuid
 from django.contrib.contenttypes.models import ContentType
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
-from django.test import TestCase
 from django.utils import timezone
-from datetime import timedelta
 
 from .base import BaseCommentTestCase
 
@@ -614,21 +612,20 @@ class CommentFlagIndexTests(BaseCommentTestCase):
     def test_filter_by_comment_uses_index(self):
         """Test filtering by comment_type and comment_id (indexed)."""
         comment = self.create_comment()
+        content_type = ContentType.objects.get_for_model(self.Comment)
         
-        # Create multiple flags
+        # Create 10 flags for the same comment
         for i in range(10):
-            from django.contrib.auth import get_user_model
-            User = get_user_model()
-            user = User.objects.create_user(
-                username=f'user{i}',
-                email=f'user{i}@example.com',
-                password='testpass'
+            self.CommentFlag.objects.create(
+                comment_type=content_type,
+                comment_id=str(comment.pk),
+                user=self.regular_user if i % 2 == 0 else self.another_user,
+                flag='spam'
             )
-            self.create_flag(comment=comment, user=user, flag='spam')
         
-        # Query using indexed fields should be efficient
+        # Query using the indexed fields
         flags = self.CommentFlag.objects.filter(
-            comment_type=ContentType.objects.get_for_model(self.Comment),
+            comment_type=content_type,
             comment_id=str(comment.pk)
         )
         
