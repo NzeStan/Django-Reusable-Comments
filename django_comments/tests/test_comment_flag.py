@@ -113,26 +113,40 @@ class CommentFlagConstraintTests(BaseCommentTestCase):
     """
     
     def test_unique_constraint_prevents_duplicate_flags(self):
-        """Test that same comment cannot have duplicate flag types."""
+        """Test that same USER cannot flag same comment twice with same flag type."""
         comment = self.create_comment()
+        content_type = ContentType.objects.get_for_model(self.Comment)
         
-        flag1 = self.create_flag(
-            comment=comment,
+        # First flag - should succeed
+        flag1 = self.CommentFlag.objects.create(
+            comment_type=content_type,
+            comment_id=str(comment.pk),
             user=self.moderator,
-            flag='spam'
+            flag='spam',
+            reason='First flag'
         )
+        self.assertIsNotNone(flag1)
         
-        # Second flag with same comment and flag type should fail
-        # (even from different user, constraint is on comment+flag only)
+        # Second flag with SAME user, comment, and flag type should fail
         with self.assertRaises(IntegrityError):
             with transaction.atomic():
                 self.CommentFlag.objects.create(
-                    comment_type=ContentType.objects.get_for_model(self.Comment),
+                    comment_type=content_type,
                     comment_id=str(comment.pk),
-                    user=self.admin_user,  # Different user, still fails
+                    user=self.moderator,  # SAME user - should fail
                     flag='spam',
                     reason='Duplicate flag attempt'
                 )
+        
+        # But DIFFERENT user with same flag type should succeed
+        flag2 = self.CommentFlag.objects.create(
+            comment_type=content_type,
+            comment_id=str(comment.pk),
+            user=self.admin_user,  # Different user - should succeed
+            flag='spam',
+            reason='Another user flagging'
+        )
+        self.assertIsNotNone(flag2)
         
     def test_same_user_can_flag_with_different_types(self):
         """Test user can flag same comment with different flag types."""
@@ -198,6 +212,36 @@ class CommentFlagConstraintTests(BaseCommentTestCase):
         self.assertFlagValid(flag1)
         self.assertFlagValid(flag2)
         self.assertNotEqual(flag1.pk, flag2.pk)
+
+    def test_same_user_can_flag_comment_with_different_types(self):
+        """Test that a user can flag the same comment with different flag types."""
+        comment = self.create_comment()
+        
+        # User flags comment as spam
+        flag1 = self.create_flag(
+            comment=comment,
+            user=self.moderator,
+            flag='spam'
+        )
+        
+        # Same user flags same comment as offensive - should succeed
+        flag2 = self.CommentFlag.objects.create(
+            comment_type=ContentType.objects.get_for_model(self.Comment),
+            comment_id=str(comment.pk),
+            user=self.moderator,  # SAME user
+            flag='offensive',  # DIFFERENT flag type
+            reason='Also offensive'
+        )
+        
+        self.assertIsNotNone(flag1)
+        self.assertIsNotNone(flag2)
+        self.assertEqual(
+            self.CommentFlag.objects.filter(
+                comment_id=str(comment.pk),
+                user=self.moderator
+            ).count(),
+            2
+        )
 
 
 class CommentFlagValidationTests(BaseCommentTestCase):
@@ -614,13 +658,16 @@ class CommentFlagIndexTests(BaseCommentTestCase):
         comment = self.create_comment()
         content_type = ContentType.objects.get_for_model(self.Comment)
         
-        # Create 10 flags for the same comment
-        for i in range(10):
+        # Create multiple flags for the same comment with DIFFERENT flag types
+        # (since unique constraint is on user+comment+flag)
+        flag_types = ['spam', 'offensive', 'inappropriate']
+        for flag_type in flag_types:
             self.CommentFlag.objects.create(
                 comment_type=content_type,
                 comment_id=str(comment.pk),
-                user=self.regular_user if i % 2 == 0 else self.another_user,
-                flag='spam'
+                user=self.moderator,
+                flag=flag_type,
+                reason=f'Flag as {flag_type}'
             )
         
         # Query using the indexed fields

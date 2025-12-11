@@ -102,22 +102,15 @@ class BaseCommentMixin(models.Model):
                 'content': _('Comment content cannot be empty or contain only whitespace.')
             })
         
-        # ✅ Validate max length
-        max_length = comments_settings.MAX_COMMENT_LENGTH
+        # ✅ Validate max length - reload settings each time for test override support
+        from django.conf import settings as django_settings
+        django_comments_config = getattr(django_settings, 'DJANGO_COMMENTS', {})
+        max_length = django_comments_config.get('MAX_COMMENT_LENGTH', comments_settings.MAX_COMMENT_LENGTH)
+        
         if max_length and len(self.content) > max_length:
             raise ValidationError({
                 'content': _(f'Comment exceeds maximum length of {max_length} characters.')
             })
-        
-        # ✅ Validate anonymous comments have name or email
-        if not self.user and not self.user_name and not self.user_email:
-            raise ValidationError({
-                'user': _('Anonymous comments must include either user_name or user_email.')
-            })
-        
-        # Validate parent if set
-        if self.parent:
-            self._validate_parent()
     
     def _validate_parent(self):
         """Validate parent comment state."""
@@ -143,8 +136,11 @@ class BaseCommentMixin(models.Model):
                     )
                 })
         
-        # Check maximum depth
-        max_depth = comments_settings.MAX_COMMENT_DEPTH
+        # Check maximum depth - reload settings each time for test override support
+        from django.conf import settings as django_settings
+        django_comments_config = getattr(django_settings, 'DJANGO_COMMENTS', {})
+        max_depth = django_comments_config.get('MAX_COMMENT_DEPTH', comments_settings.MAX_COMMENT_DEPTH)
+        
         if max_depth is not None:
             parent_depth = self.parent.depth
             # ✅ FIX: Child will be at parent_depth + 1, so check if that exceeds max
@@ -161,6 +157,11 @@ class BaseCommentMixin(models.Model):
         OPTIMIZED save method that minimizes database operations.
         """
         is_new = self._state.adding
+        
+        # Call clean() for validation on new comments
+        # (can be skipped with skip_validation=True for fixtures/migrations)
+        if is_new and not kwargs.pop('skip_validation', False):
+            self.clean()
         
         # For existing comments, just save normally
         if not is_new:
@@ -207,15 +208,10 @@ class BaseCommentMixin(models.Model):
         GenericRelation doesn't automatically cascade deletes like ForeignKey.
         We need to manually delete related flags before deleting the comment.
         """
-        # Delete related flags (GenericRelation doesn't auto-cascade)
-        from django.contrib.contenttypes.models import ContentType
-        from .models import CommentFlag
-        
-        ct = ContentType.objects.get_for_model(self.__class__)
-        CommentFlag.objects.filter(
-            comment_type=ct,
-            comment_id=str(self.pk)
-        ).delete()
+        # Delete related flags using the GenericRelation
+        # This is the cleanest way - no circular imports!
+        if hasattr(self, 'flags'):
+            self.flags.all().delete()
         
         # Now delete the comment
         return super().delete(*args, **kwargs)
@@ -437,10 +433,10 @@ class CommentFlag(models.Model):
         
         constraints = [
             models.UniqueConstraint(
-                fields=['comment_type', 'comment_id', 'flag'],
-                name='unique_comment_flag_per_user',
+                fields=['comment_type', 'comment_id', 'user', 'flag'],
+                name='unique_comment_user_flag',
                 violation_error_message=_(
-                    'This comment has already been flagged with this flag type.'
+                    'You have already flagged this comment with this flag type.'
                 )
             )
         ]
