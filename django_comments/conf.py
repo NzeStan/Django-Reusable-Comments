@@ -337,8 +337,12 @@ class CommentsSettings:
         if attr not in self.defaults:
             raise AttributeError(f"Invalid django-comments setting: '{attr}'")
         
+        # ✅ FIX: Read from Django settings dynamically for @override_settings support
+        from django.conf import settings
+        user_settings = getattr(settings, 'DJANGO_COMMENTS_CONFIG', {})
+        
         # Get the setting from user settings or use the default
-        value = self.user_settings.get(attr, self.defaults[attr])
+        value = user_settings.get(attr, self.defaults[attr])
         
         # Special handling for settings that fall back to Django settings
         if attr == 'DEFAULT_FROM_EMAIL' and value is None:

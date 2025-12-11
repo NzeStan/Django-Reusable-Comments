@@ -113,27 +113,27 @@ class CommentFlagConstraintTests(BaseCommentTestCase):
     """
     
     def test_unique_constraint_prevents_duplicate_flags(self):
-        """Test user cannot flag same comment with same type twice."""
+        """Test that same comment cannot have duplicate flag types."""
         comment = self.create_comment()
         
-        # First flag succeeds
         flag1 = self.create_flag(
             comment=comment,
             user=self.moderator,
             flag='spam'
         )
         
-        # Second flag with same parameters should fail
+        # Second flag with same comment and flag type should fail
+        # (even from different user, constraint is on comment+flag only)
         with self.assertRaises(IntegrityError):
             with transaction.atomic():
                 self.CommentFlag.objects.create(
                     comment_type=ContentType.objects.get_for_model(self.Comment),
                     comment_id=str(comment.pk),
-                    user=self.moderator,
+                    user=self.admin_user,  # Different user, still fails
                     flag='spam',
                     reason='Duplicate flag attempt'
                 )
-    
+        
     def test_same_user_can_flag_with_different_types(self):
         """Test user can flag same comment with different flag types."""
         comment = self.create_comment()

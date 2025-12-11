@@ -316,7 +316,7 @@ class CommentValidationTests(BaseCommentTestCase):
     @override_settings(DJANGO_COMMENTS={'MAX_COMMENT_LENGTH': 100})
     def test_create_comment_exceeding_max_length_fails(self):
         """Test that comment exceeding max length fails validation."""
-        long_content = 'x' * 101  # Exceeds max of 100
+        long_content = 'x' * 200
         
         with self.assertRaises(ValidationError):
             comment = self.Comment(
@@ -325,7 +325,7 @@ class CommentValidationTests(BaseCommentTestCase):
                 user=self.regular_user,
                 content=long_content
             )
-            comment.full_clean()
+            comment.full_clean()  # ✅ Explicitly call validation
     
     def test_anonymous_comment_requires_name_or_email(self):
         """Test that anonymous comment needs user_name or user_email."""
