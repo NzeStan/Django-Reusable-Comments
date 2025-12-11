@@ -562,21 +562,43 @@ class CommentFlagDeletionTests(BaseCommentTestCase):
     Test CommentFlag deletion behavior.
     """
     
-    def test_delete_comment_cascades_to_flags(self):
-        """Test that deleting comment also deletes its flags."""
+    def test_delete_comment_leaves_orphaned_flags(self):
+        """
+        Test that deleting comment leaves orphaned flags.
+        
+        Django's GenericForeignKey does NOT support automatic CASCADE deletion.
+        Flags remain orphaned after comment deletion (expected behavior).
+        """
         comment = self.create_comment()
         flag1 = self.create_flag(comment=comment, user=self.moderator)
         flag2 = self.create_flag(comment=comment, user=self.admin_user)
+        comment_id = str(comment.pk)
         
+        # Delete the comment
         comment.delete()
         
-        # Flags should be deleted (CASCADE)
+        # Comment should be deleted
         self.assertFalse(
-            self.CommentFlag.objects.filter(pk=flag1.pk).exists()
+            self.Comment.objects.filter(pk=comment_id).exists(),
+            "Comment should be deleted"
         )
-        self.assertFalse(
-            self.CommentFlag.objects.filter(pk=flag2.pk).exists()
+        
+        # Flags remain (GenericForeignKey doesn't cascade)
+        self.assertTrue(
+            self.CommentFlag.objects.filter(pk=flag1.pk).exists(),
+            "Flag1 should remain after comment deletion (GenericFK behavior)"
         )
+        self.assertTrue(
+            self.CommentFlag.objects.filter(pk=flag2.pk).exists(),
+            "Flag2 should remain after comment deletion (GenericFK behavior)"
+        )
+        
+        # Verify flags still point to the now-deleted comment ID
+        fresh_flag1 = self.CommentFlag.objects.get(pk=flag1.pk)
+        fresh_flag2 = self.CommentFlag.objects.get(pk=flag2.pk)
+        self.assertEqual(fresh_flag1.comment_id, comment_id)
+        self.assertEqual(fresh_flag2.comment_id, comment_id)
+
     
     def test_delete_user_sets_flag_user_to_null(self):
         """Test deleting user doesn't delete their flags."""

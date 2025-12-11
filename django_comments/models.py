@@ -209,6 +209,13 @@ class BaseCommentMixin(models.Model):
                     f"thread_id: {self.thread_id}"
                 )
     
+    def delete(self, *args, **kwargs):
+        """Delete related flags before deleting comment."""
+        # Use the GenericRelation to delete related flags
+        self.flags.all().delete()
+        
+        # Delete the comment
+        return super().delete(*args, **kwargs)
 
     
     def get_user_name(self):

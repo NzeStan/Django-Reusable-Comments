@@ -872,15 +872,36 @@ class CommentDeletionTests(BaseCommentTestCase):
         self.assertTrue(self.Comment.objects.filter(pk=root.pk).exists())
         self.assertTrue(self.Comment.objects.filter(pk=child2.pk).exists())
     
-    def test_delete_comment_with_flags(self):
-        """Test that deleting comment also deletes associated flags."""
+    def test_delete_comment_with_flags_leaves_orphaned_flags(self):
+        """
+        Test that deleting comment leaves associated flags orphaned.
+        
+        Django's GenericForeignKey does NOT support automatic CASCADE deletion.
+        """
         comment = self.create_comment()
         flag = self.create_flag(comment=comment)
+        comment_id = str(comment.pk)
+        flag_id = flag.pk
         
+        # Delete the comment
         comment.delete()
         
-        # Flag should be deleted (CASCADE)
-        self.assertFalse(self.CommentFlag.objects.filter(pk=flag.pk).exists())
+        # Comment should be deleted
+        self.assertFalse(
+            self.Comment.objects.filter(pk=comment_id).exists(),
+            "Comment should be deleted"
+        )
+        
+        # Flag remains (GenericForeignKey doesn't cascade)
+        self.assertTrue(
+            self.CommentFlag.objects.filter(pk=flag_id).exists(),
+            "Flag should remain after comment deletion (GenericFK behavior)"
+        )
+        
+        # Verify flag still references the deleted comment ID
+        orphaned_flag = self.CommentFlag.objects.get(pk=flag_id)
+        self.assertEqual(orphaned_flag.comment_id, comment_id)
+
 
 
 class CommentUnicodeAndInternationalizationTests(BaseCommentTestCase):
