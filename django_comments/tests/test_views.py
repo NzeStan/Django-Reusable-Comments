@@ -776,6 +776,8 @@ class CommentViewSetFlagTests(APIViewTestCase):
     
     def test_flag_comment_authenticated_success(self):
         """Test authenticated user can flag comment."""
+        from django.contrib.contenttypes.models import ContentType
+        
         comment = self.create_comment()
         url = reverse('django_comments_api:comment-flag', args=[str(comment.pk)])
         
@@ -789,9 +791,11 @@ class CommentViewSetFlagTests(APIViewTestCase):
         
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         
-        # Verify flag was created
+        # ✅ FIXED: Query using GenericForeignKey fields directly
+        comment_ct = ContentType.objects.get_for_model(comment)
         self.assertTrue(CommentFlag.objects.filter(
-            comment=comment,
+            comment_type=comment_ct,
+            comment_id=str(comment.pk),
             user=self.regular_user,
             flag='spam'
         ).exists())

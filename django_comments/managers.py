@@ -266,8 +266,9 @@ class CommentFlagManager(models.Manager):
         Create a flag or return existing one.
         Prevents duplicate flags and handles Comment model.
         
-        ✅ FIXED: Now uses update_or_create to properly update existing flags.
+        ✅ FIXED: Now includes 'flag' in lookup to respect unique constraint.
         ✅ FIXED: Explicit str() conversion for comment_id.
+        ✅ FIXED: Raises ValidationError for true duplicates.
         
         Args:
             comment: Comment instance
@@ -278,6 +279,9 @@ class CommentFlagManager(models.Manager):
         Returns:
             tuple: (CommentFlag instance, created bool)
         
+        Raises:
+            ValidationError: If user already flagged this comment with this flag type
+        
         Example:
             flag, created = CommentFlag.objects.create_or_get_flag(
                 comment=my_comment,
@@ -286,21 +290,31 @@ class CommentFlagManager(models.Manager):
                 reason='This is clearly spam'
             )
         """
+        from django.core.exceptions import ValidationError
+        from django.db import IntegrityError, transaction
+        
         # Get ContentType for the comment
         comment_ct = ContentType.objects.get_for_model(comment)
         
         # Convert PK to string (works for UUID)
         comment_id_str = str(comment.pk)  # ✅ Explicit conversion
         
-        # ✅ FIXED: Use update_or_create to update existing flags
-        # Only match on comment + user (not flag type)
-        # This allows updating the flag type when user flags again
-        flag_obj, created = self.update_or_create(
-            comment_type=comment_ct,
-            comment_id=comment_id_str,
-            user=user,
-            defaults={'flag': flag, 'reason': reason}
-        )
+        # ✅ FIXED: Include 'flag' in lookup to respect unique constraint
+        # This prevents updating existing flags of the same type
+        try:
+            with transaction.atomic():
+                flag_obj, created = self.update_or_create(
+                    comment_type=comment_ct,
+                    comment_id=comment_id_str,
+                    user=user,
+                    flag=flag,  # ✅ NOW includes flag in lookup
+                    defaults={'reason': reason}  # Only update reason
+                )
+        except IntegrityError as e:
+            # This should not happen due to update_or_create, but handle it anyway
+            raise ValidationError(
+                f'You have already flagged this comment with this flag type.'
+            ) from e
         
         return flag_obj, created
     

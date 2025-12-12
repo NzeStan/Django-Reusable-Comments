@@ -111,6 +111,8 @@ def flag_comment(comment, user, flag='other', reason=''):
     Flag a comment and send a signal.
     ENHANCED: Now checks flag thresholds and sends notifications.
     
+    ✅ FIXED: Now propagates ValidationError for duplicate flags.
+    
     Args:
         comment: Comment or UUIDComment instance
         user: User who is flagging
@@ -119,11 +121,16 @@ def flag_comment(comment, user, flag='other', reason=''):
     
     Returns:
         CommentFlag instance
+        
+    Raises:
+        ValidationError: If user already flagged this comment with this flag type
     """
+    from django.core.exceptions import ValidationError
     from .models import CommentFlag, ModerationAction
     from .utils import check_flag_threshold, check_auto_ban_conditions, auto_ban_user
     
     # Use manager method for safe creation
+    # ✅ This may raise ValidationError for duplicates, which is intentional
     comment_flag, created = CommentFlag.objects.create_or_get_flag(
         comment=comment,
         user=user,

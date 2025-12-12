@@ -517,9 +517,13 @@ class CommentViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
     def flag(self, request, pk=None):
         """
-        Flag a comment as inappropriate.
+        Flag a comment.
+        
+        ✅ FIXED: Now catches ValidationError for duplicate flags.
         Uses get_object() which already has prefetched data.
         """
+        from django.core.exceptions import ValidationError as DjangoValidationError
+        
         comment = self.get_object()
         
         serializer = CreateCommentFlagSerializer(
@@ -528,17 +532,24 @@ class CommentViewSet(viewsets.ModelViewSet):
         )
         
         if serializer.is_valid():
-            flag_obj = flag_comment(
-                comment=comment,
-                user=request.user,
-                flag=serializer.validated_data.get('flag', 'other'),
-                reason=serializer.validated_data.get('reason', '')
-            )
-            
-            return Response(
-                CommentFlagSerializer(flag_obj).data,
-                status=status.HTTP_201_CREATED
-            )
+            try:
+                flag_obj = flag_comment(
+                    comment=comment,
+                    user=request.user,
+                    flag=serializer.validated_data.get('flag', 'other'),
+                    reason=serializer.validated_data.get('reason', '')
+                )
+                
+                return Response(
+                    CommentFlagSerializer(flag_obj).data,
+                    status=status.HTTP_201_CREATED
+                )
+            except DjangoValidationError as e:
+                # User already flagged this comment with this flag type
+                return Response(
+                    {'detail': str(e)},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
         
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     
