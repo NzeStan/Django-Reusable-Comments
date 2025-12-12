@@ -81,33 +81,48 @@ def get_comment_counts_for_objects(model_class, object_ids, public_only=True):
     
     Args:
         model_class: The model class of the objects
-        object_ids: List of object IDs
+        object_ids: List of object IDs (can be any type - will be converted to strings)
         public_only: If True, only count public comments
     
     Returns:
-        dict: Mapping of object_id -> comment_count
+        dict: Mapping of object_id -> comment_count (keys match input object_ids type)
     """
+    if not object_ids:
+        return {}
+    
     ct = ContentType.objects.get_for_model(model_class)
     prefix = 'public_count' if public_only else 'count'
     
-    # Generate cache keys for all objects
+    # Normalize all object_ids to strings for consistency
+    # Store mapping from string -> original for returning results
+    str_to_original = {}
+    normalized_ids = []
+    
+    for obj_id in object_ids:
+        str_id = str(obj_id)
+        str_to_original[str_id] = obj_id
+        normalized_ids.append(str_id)
+    
+    # Generate cache keys using string IDs
     cache_keys = {
-        obj_id: get_cache_key(prefix, f"{ct.app_label}.{ct.model}", obj_id)
-        for obj_id in object_ids
+        str_id: get_cache_key(prefix, f"{ct.app_label}.{ct.model}", str_id)
+        for str_id in normalized_ids
     }
     
     # Get cached values
     cached_values = cache.get_many(cache_keys.values())
     
-    # Map back to object IDs
+    # Map back to original object IDs
     result = {}
     missing_ids = []
     
-    for obj_id, cache_key in cache_keys.items():
+    for str_id, cache_key in cache_keys.items():
         if cache_key in cached_values:
-            result[obj_id] = cached_values[cache_key]
+            # Return with original object_id type
+            original_id = str_to_original[str_id]
+            result[original_id] = cached_values[cache_key]
         else:
-            missing_ids.append(obj_id)
+            missing_ids.append(str_id)
     
     # If some values are missing, query database
     if missing_ids:
@@ -128,16 +143,21 @@ def get_comment_counts_for_objects(model_class, object_ids, public_only=True):
         # Update result and cache
         to_cache = {}
         for item in counts:
-            obj_id = item['object_id']
+            str_id = item['object_id']  # This is always a string from DB
             count = item['count']
-            result[obj_id] = count
-            to_cache[cache_keys[obj_id]] = count
+            
+            # Return with original object_id type
+            original_id = str_to_original[str_id]
+            result[original_id] = count
+            to_cache[cache_keys[str_id]] = count
         
         # Set missing IDs to 0
-        for obj_id in missing_ids:
-            if obj_id not in result:
-                result[obj_id] = 0
-                to_cache[cache_keys[obj_id]] = 0
+        for str_id in missing_ids:
+            if str_id not in [item['object_id'] for item in counts]:
+                # Return with original object_id type
+                original_id = str_to_original[str_id]
+                result[original_id] = 0
+                to_cache[cache_keys[str_id]] = 0
         
         # Cache the new values
         if to_cache:
