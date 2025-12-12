@@ -773,7 +773,7 @@ class CommentViewSetFlagTests(APIViewTestCase):
         super().setUp()
         self.client = APIClient()
     
-    @unittest.skip("Bug in code: check_auto_ban_conditions() tries to traverse GenericForeignKey - needs fix in utils.py")
+    
     def test_flag_comment_authenticated_success(self):
         """Test authenticated user can flag comment."""
         comment = self.create_comment()
@@ -806,7 +806,7 @@ class CommentViewSetFlagTests(APIViewTestCase):
         
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
     
-    @unittest.skip("Bug in code: check_auto_ban_conditions() tries to traverse GenericForeignKey - needs fix in utils.py")
+    
     def test_flag_comment_with_different_types(self):
         """Test flagging with different flag types."""
         comment = self.create_comment()
@@ -822,7 +822,7 @@ class CommentViewSetFlagTests(APIViewTestCase):
             if flag_type == 'spam':
                 self.assertEqual(response.status_code, status.HTTP_201_CREATED)
     
-    @unittest.skip("Bug in code: check_auto_ban_conditions() tries to traverse GenericForeignKey - needs fix in utils.py")
+    
     def test_flag_comment_duplicate_flag_fails(self):
         """Test user cannot flag same comment twice with same type."""
         comment = self.create_comment()
@@ -838,7 +838,7 @@ class CommentViewSetFlagTests(APIViewTestCase):
         response2 = self.client.post(url, data, format='json')
         self.assertEqual(response2.status_code, status.HTTP_400_BAD_REQUEST)
     
-    @unittest.skip("Bug in code: check_auto_ban_conditions() tries to traverse GenericForeignKey - needs fix in utils.py")
+    
     def test_flag_comment_with_empty_reason(self):
         """Test flagging without reason (should use default)."""
         comment = self.create_comment()
@@ -1592,7 +1592,7 @@ class ViewSetEdgeCaseTests(APIViewTestCase):
         super().setUp()
         self.client = APIClient()
     
-    @unittest.skip("Bug in code: check_auto_ban_conditions() tries to traverse GenericForeignKey - needs fix in utils.py")
+    
     def test_concurrent_flag_creation_same_user(self):
         """Test handling concurrent flag attempts by same user."""
         comment = self.create_comment()
