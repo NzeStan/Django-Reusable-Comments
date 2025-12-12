@@ -266,6 +266,7 @@ class CommentFlagManager(models.Manager):
         Create a flag or return existing one.
         Prevents duplicate flags and handles Comment model.
         
+        ✅ FIXED: Now uses update_or_create to properly update existing flags.
         ✅ FIXED: Explicit str() conversion for comment_id.
         
         Args:
@@ -291,19 +292,15 @@ class CommentFlagManager(models.Manager):
         # Convert PK to string (works for UUID)
         comment_id_str = str(comment.pk)  # ✅ Explicit conversion
         
-        # Try to get or create
-        flag_obj, created = self.get_or_create(
+        # ✅ FIXED: Use update_or_create to update existing flags
+        # Only match on comment + user (not flag type)
+        # This allows updating the flag type when user flags again
+        flag_obj, created = self.update_or_create(
             comment_type=comment_ct,
             comment_id=comment_id_str,
             user=user,
-            flag=flag,
-            defaults={'reason': reason}
+            defaults={'flag': flag, 'reason': reason}
         )
-        
-        # If not created and reason is different, update it
-        if not created and reason and flag_obj.reason != reason:
-            flag_obj.reason = reason
-            flag_obj.save(update_fields=['reason', 'updated_at'])
         
         return flag_obj, created
     
