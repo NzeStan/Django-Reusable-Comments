@@ -795,17 +795,49 @@ def check_auto_ban_conditions(user):
     """
     Check if user should be auto-banned based on their history.
     
+    ✅ FIXED: Now properly handles GenericForeignKey queries.
+    
+    Checks two conditions:
+    1. Number of rejected comments (is_removed=True)
+    2. Number of spam flags on user's comments
+    
     Args:
-        user: User instance
+        user: User instance to check
     
     Returns:
         tuple: (should_ban: bool, reason: str or None)
+        
+    Example:
+        >>> should_ban, reason = check_auto_ban_conditions(user)
+        >>> if should_ban:
+        >>>     auto_ban_user(user, reason)
+    
+    Settings used:
+        - AUTO_BAN_AFTER_REJECTIONS: Number of rejected comments before auto-ban
+        - AUTO_BAN_AFTER_SPAM_FLAGS: Number of spam flags before auto-ban
+    
+    Notes:
+        - Returns (False, None) if user is None or not authenticated
+        - Checks rejections first, then spam flags
+        - Returns on first threshold exceeded
+        - Does not ban staff or superusers (checked in auto_ban_user)
     """
     from .models import CommentFlag
+    from django.contrib.contenttypes.models import ContentType
     
     Comment = get_comment_model()
     
-    # Check rejected comments
+    # Validate user
+    if not user or not user.is_authenticated:
+        return False, None
+    
+    # Don't check staff/superusers (they won't be banned anyway)
+    if user.is_staff or user.is_superuser:
+        return False, None
+    
+    # ========================================================================
+    # Check 1: Rejected Comments Threshold
+    # ========================================================================
     rejection_threshold = comments_settings.AUTO_BAN_AFTER_REJECTIONS
     if rejection_threshold:
         rejected_count = Comment.objects.filter(
@@ -816,18 +848,34 @@ def check_auto_ban_conditions(user):
         if rejected_count >= rejection_threshold:
             return True, f"Auto-ban: {rejected_count} rejected comments"
     
-    # Check spam flags
+    # ========================================================================
+    # Check 2: Spam Flags Threshold
+    # ✅ FIXED: Now uses proper GenericForeignKey query
+    # ========================================================================
     spam_threshold = comments_settings.AUTO_BAN_AFTER_SPAM_FLAGS
     if spam_threshold:
-        spam_flags = CommentFlag.objects.filter(
-            comment__user=user,
-            flag='spam'
-        ).count()
+        # Get Comment content type
+        comment_ct = ContentType.objects.get_for_model(Comment)
         
-        if spam_flags >= spam_threshold:
-            return True, f"Auto-ban: {spam_flags} spam flags"
+        # Get all comment IDs for this user (as strings, since comment_id is TextField)
+        user_comment_ids = [
+            str(pk) for pk in Comment.objects.filter(user=user).values_list('pk', flat=True)
+        ]
+        
+        if user_comment_ids:
+            # ✅ Query using GenericFK fields directly, not the FK itself
+            spam_flags = CommentFlag.objects.filter(
+                comment_type=comment_ct,
+                comment_id__in=user_comment_ids,
+                flag='spam'
+            ).count()
+            
+            if spam_flags >= spam_threshold:
+                return True, f"Auto-ban: {spam_flags} spam flags"
     
+    # No ban conditions met
     return False, None
+
 
 
 def auto_ban_user(user, reason: str) -> Optional['BannedUser']:
