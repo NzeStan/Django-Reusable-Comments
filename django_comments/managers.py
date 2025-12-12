@@ -310,6 +310,12 @@ class CommentFlagManager(models.Manager):
                     flag=flag,  # ✅ NOW includes flag in lookup
                     defaults={'reason': reason}  # Only update reason
                 )
+                
+                # ✅ ADD THESE 4 LINES:
+                if not created:
+                    raise ValidationError(
+                        'You have already flagged this comment with this flag type.'
+                    )
         except IntegrityError as e:
             # This should not happen due to update_or_create, but handle it anyway
             raise ValidationError(
