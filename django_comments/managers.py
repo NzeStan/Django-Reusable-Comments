@@ -72,7 +72,6 @@ class CommentQuerySet(models.QuerySet):
         Return all comments for a specific model or model instance.
         Includes basic optimizations.
         
-        ✅ FIXED: Always converts object_id to string for comparison.
         """
         if isinstance(model_or_instance, models.Model):
             # It's a model instance
@@ -80,7 +79,7 @@ class CommentQuerySet(models.QuerySet):
             content_type = ContentType.objects.get_for_model(model)
             return self.filter(
                 content_type=content_type,
-                object_id=str(model_or_instance.pk)  # ✅ Explicit str() conversion
+                object_id=str(model_or_instance.pk) 
             ).with_user_and_content_type()
         else:
             # It's a model class
@@ -202,36 +201,33 @@ class CommentManager(models.Manager):
         """
         Return all comments for a given object.
         
-        ✅ FIXED: Explicit str() conversion for object_id.
         """
         content_type = ContentType.objects.get_for_model(content_object)
         return self.filter(
             content_type=content_type,
-            object_id=str(content_object.pk)  # ✅ Explicit conversion
+            object_id=str(content_object.pk)  
         ).optimized_for_list()
     
     def get_by_model_and_id(self, model, object_id):
         """
         Return all comments for a given model and object_id.
         
-        ✅ FIXED: Explicit str() conversion for object_id.
         """
         content_type = ContentType.objects.get_for_model(model)
         return self.filter(
             content_type=content_type,
-            object_id=str(object_id)  # ✅ Explicit conversion
+            object_id=str(object_id)  
         ).optimized_for_list()
     
     def create_for_object(self, content_object, **kwargs):
         """
         Create a new comment for a specific object.
         
-        ✅ FIXED: Explicit str() conversion for object_id.
         """
         content_type = ContentType.objects.get_for_model(content_object)
         return self.create(
             content_type=content_type,
-            object_id=str(content_object.pk),  # ✅ Explicit conversion
+            object_id=str(content_object.pk), 
             **kwargs
         )
     
@@ -240,7 +236,6 @@ class CommentManager(models.Manager):
         Get only public comments for an object.
         Common pattern, so worth having as dedicated method.
         
-        ✅ FIXED: Explicit str() conversion for object_id.
         """
         return self.get_by_content_object(content_object).filter(
             is_public=True,
@@ -265,10 +260,6 @@ class CommentFlagManager(models.Manager):
         """
         Create a flag or return existing one.
         Prevents duplicate flags and handles Comment model.
-        
-        ✅ FIXED: Now includes 'flag' in lookup to respect unique constraint.
-        ✅ FIXED: Explicit str() conversion for comment_id.
-        ✅ FIXED: Raises ValidationError for true duplicates.
         
         Args:
             comment: Comment instance
@@ -297,9 +288,9 @@ class CommentFlagManager(models.Manager):
         comment_ct = ContentType.objects.get_for_model(comment)
         
         # Convert PK to string (works for UUID)
-        comment_id_str = str(comment.pk)  # ✅ Explicit conversion
+        comment_id_str = str(comment.pk)
         
-        # ✅ FIXED: Include 'flag' in lookup to respect unique constraint
+        # Include 'flag' in lookup to respect unique constraint
         # This prevents updating existing flags of the same type
         try:
             with transaction.atomic():
@@ -307,17 +298,15 @@ class CommentFlagManager(models.Manager):
                     comment_type=comment_ct,
                     comment_id=comment_id_str,
                     user=user,
-                    flag=flag,  # ✅ NOW includes flag in lookup
-                    defaults={'reason': reason}  # Only update reason
+                    flag=flag,  
+                    defaults={'reason': reason}  
                 )
                 
-                # ✅ ADD THESE 4 LINES:
                 if not created:
                     raise ValidationError(
                         'You have already flagged this comment with this flag type.'
                     )
         except IntegrityError as e:
-            # This should not happen due to update_or_create, but handle it anyway
             raise ValidationError(
                 f'You have already flagged this comment with this flag type.'
             ) from e
@@ -328,7 +317,6 @@ class CommentFlagManager(models.Manager):
         """
         Get all flags for a specific comment.
         
-        ✅ FIXED: Explicit str() conversion for comment_id.
         
         Args:
             comment: Comment instance
@@ -344,7 +332,7 @@ class CommentFlagManager(models.Manager):
         comment_ct = ContentType.objects.get_for_model(comment)
         return self.filter(
             comment_type=comment_ct,
-            comment_id=str(comment.pk)  # ✅ Explicit conversion
+            comment_id=str(comment.pk)  
         ).select_related('user')
     
     def get_flags_by_user(self, user, flag_type=None):

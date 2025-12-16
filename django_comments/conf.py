@@ -337,7 +337,6 @@ class CommentsSettings:
         if attr not in self.defaults:
             raise AttributeError(f"Invalid django-comments setting: '{attr}'")
         
-        # ✅ FIX: Read from Django settings dynamically for @override_settings support
         from django.conf import settings
         user_settings = getattr(settings, 'DJANGO_COMMENTS_CONFIG', {})
         

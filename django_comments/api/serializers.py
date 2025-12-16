@@ -96,7 +96,7 @@ class CreateCommentFlagSerializer(serializers.ModelSerializer):
         reason = validated_data.get('reason', '')
         
         try:
-            # Use the manager's create_or_get_flag method which handles GenericForeignKey properly
+            
             flag, created = CommentFlag.objects.create_or_get_flag(
                 comment=comment,
                 user=user,
@@ -138,21 +138,17 @@ class RecursiveCommentSerializer(serializers.Serializer):
 class CommentSerializer(serializers.ModelSerializer):
     """
     Serializer for comments with support for nested comments.
-    
-    ✅ SECURITY: is_public and is_removed are READ-ONLY
-    Only moderators can change these via approve/reject endpoints.
-    
-    ✅ ENHANCED: Long validate() method refactored into focused helper methods.
+
     """
 
     content_type = serializers.CharField(
         write_only=True,
-        required=False,  # Not required for updates
+        required=False,  
         help_text=_("Content type in the format 'app_label.model_name'")
     )
     object_id = serializers.CharField(
         write_only=True,
-        required=False,  # Not required for updates
+        required=False, 
         help_text=_("ID of the object to comment on")
     )
     content_object_info = serializers.SerializerMethodField()
@@ -202,12 +198,12 @@ class CommentSerializer(serializers.ModelSerializer):
             'id', 'formatted_content', 'content_object_info', 'user_info', 'children', 'thread_id',  
             'depth', 'created_at', 'updated_at', 'is_flagged', 'children_count',
             'revisions_count', 'moderation_actions_count',
-            'is_public', 'is_removed',  # ✅ SECURITY: Only moderators can change these
+            'is_public', 'is_removed', 
         )
 
     def get_formatted_content(self, obj) -> str:
         """
-        ✅ NEW: Return formatted comment content based on COMMENT_FORMAT setting.
+        Return formatted comment content based on COMMENT_FORMAT setting.
         
         Uses the formatting module to render content as:
         - Plain text (HTML escaped)
@@ -314,24 +310,18 @@ class CommentSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(str(e))
     
 
-    def validate_user_name(self, value):
-        if len(value) > 100:
-            raise serializers.ValidationError("Name too long")
-        # Only allow alphanumeric and basic punctuation
-        if not re.match(r'^[\w\s\-.,\']+$', value):
-            raise serializers.ValidationError("Invalid characters in name")
-        return value
+    # def validate_user_name(self, value):
+    #     if len(value) > 100:
+    #         raise serializers.ValidationError("Name too long")
+    #     # Only allow alphanumeric and basic punctuation
+    #     if not re.match(r'^[\w\s\-.,\']+$', value):
+    #         raise serializers.ValidationError("Invalid characters in name")
+    #     return value
     
-    # ============================================================================
-    # ✅ REFACTORED: validate() extracted into focused helper methods
-    # ============================================================================
     
     def validate(self, data):
         """
         Validate the comment data.
-        
-        ✅ REFACTORED: Now uses helper methods for better organization.
-        Each helper method has a single responsibility and is easy to test.
         
         This method orchestrates the validation flow:
         1. Clean security fields
@@ -377,10 +367,6 @@ class CommentSerializer(serializers.ModelSerializer):
     def _clean_security_fields(self, data):
         """
         Remove security-sensitive fields from user input.
-        
-        ✅ SECURITY: is_public and is_removed can ONLY be set by:
-        - The system during validation
-        - Moderators via approve/reject endpoints
         
         This prevents users from bypassing moderation by setting these fields.
         
@@ -451,8 +437,6 @@ class CommentSerializer(serializers.ModelSerializer):
     def _validate_user_not_banned(self, user):
         """
         Check if user is banned from commenting.
-        
-        ✅ SINGLE SOURCE OF TRUTH: Uses BannedUser.check_user_banned()
         
         Raises detailed validation errors for:
         - Permanent bans
@@ -525,24 +509,17 @@ class CommentSerializer(serializers.ModelSerializer):
         if not comments_settings.MODERATOR_REQUIRED:
             is_public = True
         
-        # ✅ Set is_public based on our server-side logic
-        # This CANNOT be overridden by user input
         data["is_public"] = is_public
         
-        # ✅ New comments are never removed by default
         data["is_removed"] = False
         
         return data
     
-    # ============================================================================
-    # END OF REFACTORED SECTION
-    # ============================================================================
 
     def get_content_object_info(self, obj) -> Optional[Dict[str, Any]]:
         """
         Get information about the commented object.
-        OPTIMIZED: content_type is already prefetched.
-        FIXED: Always return object_id as string.
+
         """
         if not obj.content_object:
             return None
@@ -572,7 +549,6 @@ class CommentSerializer(serializers.ModelSerializer):
         Create a new comment with content processing.
         Now processes content for profanity and applies auto-flags.
         
-        ✅ SECURITY: is_public and is_removed are already set by validate()
         """
         # Extract content_type and object_id
         content_type_str = validated_data.pop('content_type')
@@ -607,7 +583,7 @@ class CommentSerializer(serializers.ModelSerializer):
         """
         Update a comment.
         
-        IMPORTANT: The following fields are immutable and cannot be changed:
+        The following fields are immutable and cannot be changed:
         - content_type: The type of object being commented on
         - object_id: The ID of the object being commented on
         - parent: The parent comment (for threading structure)
@@ -619,7 +595,7 @@ class CommentSerializer(serializers.ModelSerializer):
         # Remove immutable fields that should never be updated
         immutable_fields = [
             'content_type', 'object_id', 'parent', 'thread_id', 'path',
-            'is_public', 'is_removed'  # ✅ SECURITY: Only moderators can change these
+            'is_public', 'is_removed'  
         ]
         for field in immutable_fields:
             validated_data.pop(field, None)

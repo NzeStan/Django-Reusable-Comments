@@ -24,8 +24,6 @@ def get_comment_model():
     """
     Return the Comment model.
     
-    ✅ SIMPLIFIED: Always returns django_comments.Comment (UUID-based).
-    No more USE_UUIDS logic - we only have one model now.
     
     Returns:
         Comment model class
@@ -254,7 +252,7 @@ def is_comment_content_allowed(content: str) -> tuple[bool, Optional[str]]:
             action = comments_settings.PROFANITY_ACTION
             if action in ['hide', 'delete']:
                 return False, f"Content contains profanity"
-            # If action is 'censor' or 'flag', we allow it (will be processed later)
+            
 
     return True, None
 
@@ -311,7 +309,6 @@ def apply_automatic_flags(comment):
     """
     Apply automatic flags to a comment based on content analysis.
     
-    ✅ FIXED: Uses get_or_create_system_user() to prevent race conditions.
     
     This function is called after a comment is created to:
     - Flag spam detected by spam detection system
@@ -336,7 +333,6 @@ def apply_automatic_flags(comment):
     """
     from .models import CommentFlag
     
-    # ✅ FIXED: Use atomic helper function
     system_user = get_or_create_system_user()
     
     # Get content analysis
@@ -422,10 +418,10 @@ def get_comment_context(obj: models.Model) -> Dict[str, Any]:
         'content_type_id': content_type.id,
         'app_label': content_type.app_label,
         'model_name': content_type.model,
-        'object_id': str(obj.pk),  # ✅ Always convert to string
+        'object_id': str(obj.pk),  
         'comments': Comment.objects.filter(
             content_type=content_type,
-            object_id=str(obj.pk),  # ✅ Always convert to string
+            object_id=str(obj.pk),
             is_public=True,
             is_removed=False
         ).order_by('-created_at'),
@@ -566,7 +562,6 @@ def get_or_create_system_user():
     """
     Get or create the system user atomically.
     
-    ✅ FIXED: Uses get_or_create() to prevent race conditions.
     This is the single source of truth for system user creation.
     
     The system user is used for:
@@ -592,8 +587,6 @@ def get_or_create_system_user():
         - Uses database-level atomicity to prevent duplicates
     """
     try:
-        # ✅ ATOMIC: get_or_create prevents race conditions
-        # Only one process will create, others will get existing
         system_user, created = User.objects.get_or_create(
             username='system',
             defaults={
@@ -795,8 +788,6 @@ def check_auto_ban_conditions(user):
     """
     Check if user should be auto-banned based on their history.
     
-    ✅ FIXED: Now properly handles GenericForeignKey queries.
-    
     Checks two conditions:
     1. Number of rejected comments (is_removed=True)
     2. Number of spam flags on user's comments
@@ -835,9 +826,7 @@ def check_auto_ban_conditions(user):
     if user.is_staff or user.is_superuser:
         return False, None
     
-    # ========================================================================
-    # Check 1: Rejected Comments Threshold
-    # ========================================================================
+    
     rejection_threshold = comments_settings.AUTO_BAN_AFTER_REJECTIONS
     if rejection_threshold:
         rejected_count = Comment.objects.filter(
@@ -848,22 +837,16 @@ def check_auto_ban_conditions(user):
         if rejected_count >= rejection_threshold:
             return True, f"Auto-ban: {rejected_count} rejected comments"
     
-    # ========================================================================
-    # Check 2: Spam Flags Threshold
-    # ✅ FIXED: Now uses proper GenericForeignKey query
-    # ========================================================================
     spam_threshold = comments_settings.AUTO_BAN_AFTER_SPAM_FLAGS
     if spam_threshold:
         # Get Comment content type
         comment_ct = ContentType.objects.get_for_model(Comment)
         
-        # Get all comment IDs for this user (as strings, since comment_id is TextField)
         user_comment_ids = [
             str(pk) for pk in Comment.objects.filter(user=user).values_list('pk', flat=True)
         ]
         
         if user_comment_ids:
-            # ✅ Query using GenericFK fields directly, not the FK itself
             spam_flags = CommentFlag.objects.filter(
                 comment_type=comment_ct,
                 comment_id__in=user_comment_ids,
@@ -881,8 +864,6 @@ def check_auto_ban_conditions(user):
 def auto_ban_user(user, reason: str) -> Optional['BannedUser']:
     """
     Automatically ban a user based on their behavior.
-    
-    ✅ FIXED: Uses get_or_create_system_user() to prevent race conditions.
     
     This function is called when a user exceeds thresholds for:
     - Number of rejected comments
@@ -917,7 +898,6 @@ def auto_ban_user(user, reason: str) -> Optional['BannedUser']:
         return None
     
     try:
-        # ✅ FIXED: Use atomic helper function
         system_user = get_or_create_system_user()
         
         # Calculate ban duration
@@ -936,7 +916,6 @@ def auto_ban_user(user, reason: str) -> Optional['BannedUser']:
                 f"Reason: {reason}"
             )
         
-        # ✅ IMPROVED: Check if user is already banned
         existing_ban = BannedUser.objects.filter(
             user=user,
             banned_until__isnull=True  # Permanent
@@ -975,7 +954,6 @@ def auto_ban_user(user, reason: str) -> Optional['BannedUser']:
             f"({'permanent' if not banned_until else f'until {banned_until}'})"
         )
         
-        # ✅ IMPROVED: Send notification email
         if comments_settings.SEND_NOTIFICATIONS:
             try:
                 from .notifications import notify_user_banned
@@ -1025,7 +1003,7 @@ def bulk_create_flags_without_validation(flag_data_list):
     """
     Bulk create CommentFlag instances without running clean() validation.
     
-    ✅ UPDATED: Now uses secure skip_flag_validation context manager.
+    Uses secure skip_flag_validation context manager.
     
     Use this when you're confident the data is valid and want maximum performance.
     
@@ -1057,7 +1035,6 @@ def bulk_create_flags_without_validation(flag_data_list):
     flags = []
     for data in flag_data_list:
         flag = CommentFlag(**data)
-        # ✅ SECURITY: Use double underscore for name mangling
         flag._CommentFlag__skip_clean_validation = True
         flags.append(flag)
     

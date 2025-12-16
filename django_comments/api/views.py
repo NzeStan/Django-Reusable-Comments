@@ -20,9 +20,8 @@ from ..utils import (
 )
 from django.core.cache import cache
 from django.contrib.contenttypes.models import ContentType
-from django.db.models import Prefetch, Count
+from django.db.models import  Count
 from ..models import CommentFlag
-from ..cache import warm_comment_cache_for_queryset
 from rest_framework import serializers as drf_serializers
 import uuid
 from django.db.models.functions import TruncDate
@@ -148,7 +147,6 @@ class CommentViewSet(viewsets.ModelViewSet):
     Optimized with select_related, prefetch_related, and annotations.
     validates ordering against ALLOWED_SORTS.
     
-    ✅ ENHANCED: Long methods refactored into focused helper methods.
     """
     serializer_class = CommentSerializer
     permission_classes = [CommentPermission]
@@ -181,17 +179,12 @@ class CommentViewSet(viewsets.ModelViewSet):
         # Return default
         return [comments_settings.DEFAULT_SORT]
     
-    # ============================================================================
-    # ✅ REFACTORED: get_queryset() extracted into focused helper methods
-    # ============================================================================
     
     def get_queryset(self):
         """
         Get optimized queryset with all related data preloaded.
         Reduces N+1 queries dramatically.
         
-        ✅ REFACTORED: Now uses helper methods for better organization.
-        Each helper method has a single responsibility and is easy to test.
         """
         queryset = Comment.objects.all()
         queryset = self._apply_query_optimizations(queryset)
@@ -336,9 +329,6 @@ class CommentViewSet(viewsets.ModelViewSet):
         ordering = self.get_ordering()
         return queryset.order_by(*ordering)
     
-    # ============================================================================
-    # END OF REFACTORED SECTION
-    # ============================================================================
     
     def create(self, request, *args, **kwargs):
         """
@@ -387,14 +377,12 @@ class CommentViewSet(viewsets.ModelViewSet):
         """
         Check if user is banned with request-level caching.
         
-        ✅ UPDATED: Now uses BannedUser.check_user_banned() from models
         """
         if not hasattr(self.request, '_ban_cache'):
             self.request._ban_cache = {}
         
         user_id = user.pk
         if user_id not in self.request._ban_cache:
-            # ✅ NEW: Use BannedUser.check_user_banned() instead of utils
             self.request._ban_cache[user_id] = BannedUser.check_user_banned(user)
         
         return self.request._ban_cache[user_id]
@@ -403,8 +391,6 @@ class CommentViewSet(viewsets.ModelViewSet):
         """Add ban checking to serializer context."""
         context = super().get_serializer_context()
         if self.request.user.is_authenticated:
-            # ✅ SIMPLIFIED: Direct call without caching wrapper
-            # BannedUser.check_user_banned already optimizes with select_related
             context['user_banned_info'] = BannedUser.check_user_banned(self.request.user)
         return context
 
@@ -413,7 +399,7 @@ class CommentViewSet(viewsets.ModelViewSet):
         """
         List comments with intelligent cache warming.
         
-        ✅ NEW: Warms cache for next page to improve perceived performance.
+        Warms cache for next page to improve perceived performance.
         
         How it works:
         1. Serves current page from database
@@ -519,7 +505,7 @@ class CommentViewSet(viewsets.ModelViewSet):
         """
         Flag a comment.
         
-        ✅ FIXED: Now catches ValidationError for duplicate flags.
+        Catches ValidationError for duplicate flags.
         Uses get_object() which already has prefetched data.
         """
         from django.core.exceptions import ValidationError as DjangoValidationError
@@ -665,8 +651,6 @@ class CommentViewSet(viewsets.ModelViewSet):
         """
         Approve multiple comments at once.
         
-        ✅ FIXED: Added comprehensive input validation
-        
         Request body:
             {
                 "comment_ids": ["uuid1", "uuid2", ...]
@@ -699,7 +683,7 @@ class CommentViewSet(viewsets.ModelViewSet):
         # Get comment IDs from request
         comment_ids = request.data.get('comment_ids', [])
         
-        # ✅ FIXED: Validate input with comprehensive checks
+        #Validate input with comprehensive checks
         try:
             validated_ids = validate_comment_ids(comment_ids, max_count=100)
         except drf_serializers.ValidationError as e:
@@ -709,7 +693,7 @@ class CommentViewSet(viewsets.ModelViewSet):
         comments = Comment.objects.filter(pk__in=validated_ids)
         found_count = comments.count()
         
-        # ✅ IMPROVED: Track missing IDs for better error reporting
+        #Track missing IDs for better error reporting
         if found_count != len(validated_ids):
             found_ids = set(str(c.pk) for c in comments)
             missing_ids = [str(vid) for vid in validated_ids if str(vid) not in found_ids]
@@ -753,7 +737,6 @@ class CommentViewSet(viewsets.ModelViewSet):
         """
         Reject multiple comments at once.
         
-        ✅ FIXED: Added comprehensive input validation
         
         Request body:
             {
@@ -788,13 +771,13 @@ class CommentViewSet(viewsets.ModelViewSet):
         comment_ids = request.data.get('comment_ids', [])
         reason = request.data.get('reason', '')
         
-        # ✅ FIXED: Validate input
+        #Validate input
         try:
             validated_ids = validate_comment_ids(comment_ids, max_count=100)
         except drf_serializers.ValidationError as e:
             return Response(e.detail, status=status.HTTP_400_BAD_REQUEST)
         
-        # ✅ IMPROVED: Validate reason length
+        #Validate reason length
         if reason and len(reason) > 1000:
             return Response(
                 {'detail': _("Reason must be 1000 characters or less")},
@@ -859,8 +842,6 @@ class CommentViewSet(viewsets.ModelViewSet):
         """
         Delete multiple comments at once with moderation logging.
         
-        ✅ FIXED: Added comprehensive input validation
-        
         Request body:
             {
                 "comment_ids": ["uuid1", "uuid2", ...],
@@ -900,13 +881,11 @@ class CommentViewSet(viewsets.ModelViewSet):
         comment_ids = request.data.get('comment_ids', [])
         reason = request.data.get('reason', '')
 
-        # ✅ FIXED: Validate input
         try:
             validated_ids = validate_comment_ids(comment_ids, max_count=100)
         except drf_serializers.ValidationError as e:
             return Response(e.detail, status=status.HTTP_400_BAD_REQUEST)
         
-        # ✅ IMPROVED: Validate reason length
         if reason and len(reason) > 1000:
             return Response(
                 {'detail': _("Reason must be 1000 characters or less")},
@@ -922,7 +901,6 @@ class CommentViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_404_NOT_FOUND
             )
         
-        # ✅ IMPROVED: Check if all comments exist
         found_count = comments_qs.count()
         if found_count != len(validated_ids):
             found_ids = set(str(c.pk) for c in comments_qs)
@@ -945,7 +923,6 @@ class CommentViewSet(viewsets.ModelViewSet):
 
         try:
             with transaction.atomic():
-                # ✅ IMPROVED: Log moderation actions before deletion
                 moderation_actions = []
                 for comment in comments_qs:
                     moderation_actions.append(
@@ -1203,18 +1180,11 @@ class ContentObjectCommentsViewSet(mixins.ListModelMixin, viewsets.GenericViewSe
         
         return queryset
     
-    # ============================================================================
-    # NEW: CACHE WARMING METHODS
-    # ============================================================================
     
     def list(self, request, *args, **kwargs):
         """
         List comments for a content object with optimized cache warming.
         
-        ✅ NEW: Pre-warms cache for this specific content object.
-        
-        This is more efficient than the general list() method because
-        it knows exactly what object is being queried.
         """
         content_type_str = self.kwargs.get('content_type')
         object_id = self.kwargs.get('object_id')
@@ -1281,14 +1251,12 @@ class ContentObjectCommentsViewSet(mixins.ListModelMixin, viewsets.GenericViewSe
                 count=models.Count('id')
             )
             
-            # Cache these counts (they're likely to be needed)
             from django.core.cache import cache
             for item in flag_counts:
                 cache_key = f"comment_flag_count:{item['comment_id']}"
                 cache.set(cache_key, item['count'], 3600)  # 1 hour
             
         except Exception as e:
-            # Non-critical, don't fail the response
             import logging
             logger = logging.getLogger(__name__)
             logger.debug(f"Content object cache warming failed: {e}")
@@ -1359,7 +1327,7 @@ class BannedUserViewSet(viewsets.ModelViewSet):
         """Only moderators can manage bans."""
         if self.action in ['list', 'retrieve']:
             return [IsAuthenticated()]
-        return [IsAuthenticated()]  # Will check permission in method
+        return [IsAuthenticated()] 
     
     def get_queryset(self):
         """Moderators see all, users see only their own."""
@@ -1454,7 +1422,6 @@ class BannedUserViewSet(viewsets.ModelViewSet):
         # Delete the ban (actually unbans the user)
         result = super().destroy(request, *args, **kwargs)
         
-        # ✅ NEW: Send unban notification
         from ..notifications import notify_user_unbanned
         notify_user_unbanned(
             user=unbanned_user,

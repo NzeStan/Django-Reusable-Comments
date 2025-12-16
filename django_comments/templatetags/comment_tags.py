@@ -5,7 +5,6 @@ Load in templates with: {% load comment_tags %}
 from django import template
 from django.contrib.contenttypes.models import ContentType
 from django.utils.safestring import mark_safe
-
 from ..cache import get_comment_count_for_object
 from ..utils import get_comment_model
 from ..formatting import render_comment_content  

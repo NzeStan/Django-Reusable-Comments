@@ -61,7 +61,6 @@ class CommentPermission(permissions.BasePermission):
             return obj.user == request.user
         
         # For moderation actions (approve/reject)
-        # FIXED: Return True here - permission will be checked at view level with has_perm
         if view.action in ['approve', 'reject']:
             # Allow the request to proceed - the view will check has_perm
             return True

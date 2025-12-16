@@ -17,6 +17,5 @@ class DjangoCommentsConfig(AppConfig):
         # Ensure comments settings are imported/initialized
         from .conf import comments_settings  
 
-        # Do not configure handlers or levels here — let Django's LOGGING take care of that.
         logger = logging.getLogger(comments_settings.LOGGER_NAME)
         logger.info('Django Comments initialized with UUID-based Comment model')

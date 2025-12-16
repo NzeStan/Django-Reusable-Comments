@@ -14,7 +14,6 @@ CACHE_TIMEOUT = getattr(comments_settings, 'CACHE_TIMEOUT', 3600)
 
 def get_cache_key(prefix, content_type, object_id):
     """Generate a safe cache key."""
-    # Replace any colons to prevent key collisions
     safe_ct = str(content_type).replace(':', '_')
     safe_id = str(object_id).replace(':', '_')
     return f"django_comments:{prefix}:{safe_ct}:{safe_id}"
@@ -93,8 +92,6 @@ def get_comment_counts_for_objects(model_class, object_ids, public_only=True):
     ct = ContentType.objects.get_for_model(model_class)
     prefix = 'public_count' if public_only else 'count'
     
-    # Normalize all object_ids to strings for consistency
-    # Store mapping from string -> original for returning results
     str_to_original = {}
     normalized_ids = []
     
@@ -143,7 +140,7 @@ def get_comment_counts_for_objects(model_class, object_ids, public_only=True):
         # Update result and cache
         to_cache = {}
         for item in counts:
-            str_id = item['object_id']  # This is always a string from DB
+            str_id = item['object_id']  
             count = item['count']
             
             # Return with original object_id type

@@ -35,7 +35,6 @@ class BaseCommentMixin(models.Model):
         related_name='%(app_label)s_%(class)s_comments'
     )
     
-    # ✅ CharField handles BOTH integer and UUID object IDs
     object_id = models.CharField(
         _('Object ID'),
         max_length=255,
@@ -96,13 +95,11 @@ class BaseCommentMixin(models.Model):
         """
         super().clean()
         
-        # ✅ Validate content is not empty or whitespace-only
         if not self.content or not self.content.strip():
             raise ValidationError({
                 'content': _('Comment content cannot be empty or contain only whitespace.')
             })
         
-        # ✅ Validate max length - reload settings each time for test override support
         from django.conf import settings as django_settings
         django_comments_config = getattr(django_settings, 'DJANGO_COMMENTS', {})
         max_length = django_comments_config.get('MAX_COMMENT_LENGTH', comments_settings.MAX_COMMENT_LENGTH)
@@ -111,13 +108,11 @@ class BaseCommentMixin(models.Model):
             raise ValidationError({
                 'content': _(f'Comment exceeds maximum length of {max_length} characters.')
             })
-        # ✅ Validate anonymous comments have user_name or user_email
         if not self.user and not self.user_name and not self.user_email:
             raise ValidationError({
                 'user_name': _('Anonymous comments must provide either a name or email address.')
             })
         
-        # ✅ Validate parent if it exists
         if self.parent and self._state.adding:
             self._validate_parent()
     
@@ -152,7 +147,6 @@ class BaseCommentMixin(models.Model):
         
         if max_depth is not None:
             parent_depth = self.parent.depth
-            # ✅ FIX: Child will be at parent_depth + 1, so check if that exceeds max
             if parent_depth + 1 > max_depth:
                 raise ValidationError({
                     'parent': _(
@@ -260,10 +254,6 @@ class BaseCommentMixin(models.Model):
         return self.updated_at - self.created_at > timezone.timedelta(seconds=30)
 
 
-# ============================================================================
-# ✅ SINGLE COMMENT MODEL - UUID Primary Key
-# ============================================================================
-
 class Comment(AbstractCommentBase, BaseCommentMixin):
     """
     Comment model with UUID primary key.
@@ -313,14 +303,9 @@ class Comment(AbstractCommentBase, BaseCommentMixin):
         ]
 
 
-# ============================================================================
-# COMMENT FLAG MODEL - UUID Primary Key
-# ============================================================================
-
 class CommentFlag(models.Model):
     """
     Records user flags for comments that may be inappropriate.
-    ✅ UPDATED: Now uses UUID primary key for consistency.
     """
     
     FLAG_CHOICES = (
@@ -336,7 +321,6 @@ class CommentFlag(models.Model):
         ('other', _('Other')),
     )
     
-    # ✅ UUID Primary Key
     id = models.UUIDField(
         primary_key=True,
         default=uuid.uuid4,
@@ -365,8 +349,8 @@ class CommentFlag(models.Model):
     # User who flagged
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
-        on_delete=models.SET_NULL,  # ✅ This preserves the flag
-        null=True,  # ✅ Allow null when user is deleted
+        on_delete=models.SET_NULL,  
+        null=True,  
         verbose_name=_('User'),
         related_name='comment_flags',
         help_text=_('The user who flagged this comment')
@@ -497,7 +481,6 @@ class CommentFlag(models.Model):
         """
         super(CommentFlag, self).clean()
         
-        # ✅ SECURITY: Use double underscore for name mangling
         # This makes the flag harder to access accidentally
         if getattr(self, '_CommentFlag__skip_clean_validation', False):
             return
@@ -510,12 +493,10 @@ class CommentFlag(models.Model):
         if not self.comment_type or not self.comment_id:
             return
         
-        # ✅ OPTIMIZATION: Cache validation result on this instance
         cache_key = f'_validated_{self.comment_type.pk}_{self.comment_id}'
         if getattr(self, cache_key, False):
             return
         
-        # ✅ OPTIMIZATION: Perform validation with minimal data fetch
         try:
             model_class = self.comment_type.model_class()
             if model_class:
@@ -529,8 +510,6 @@ class CommentFlag(models.Model):
                             f'Comment with ID {self.comment_id} does not exist.'
                         )
                     })
-                
-                # ✅ Cache the validation result
                 setattr(self, cache_key, True)
                 
         except ValidationError:
@@ -543,7 +522,6 @@ class CommentFlag(models.Model):
 
     def mark_reviewed(self, moderator, action, notes=''):
         """Mark this flag as reviewed."""
-        # ✅ Validate action is valid
         valid_actions = [choice[0] for choice in self.REVIEW_ACTION_CHOICES]
         if action and action not in valid_actions:
             raise ValueError(
@@ -559,18 +537,13 @@ class CommentFlag(models.Model):
         self.save(update_fields=['reviewed', 'reviewed_by', 'reviewed_at', 'review_action', 'review_notes'])
 
 
-# ============================================================================
-# BANNED USER MODEL - UUID Primary Key
-# ============================================================================
-
 class BannedUser(models.Model):
     """
     Track users who are banned from commenting.
     Supports both permanent and temporary bans.
-    ✅ UPDATED: Now uses UUID primary key for consistency.
+
     """
     
-    # ✅ UUID Primary Key
     id = models.UUIDField(
         primary_key=True,
         default=uuid.uuid4,
@@ -613,7 +586,7 @@ class BannedUser(models.Model):
         verbose_name_plural = _('Banned Users')
         ordering = ['-created_at']
         
-        # ✅ UNIQUE CONSTRAINT: Only one ban per user
+        
         constraints = [
             models.UniqueConstraint(
                 fields=['user'],
@@ -672,7 +645,7 @@ class BannedUser(models.Model):
     def check_user_banned(cls, user):
         """
         Check if user is banned with detailed information.
-        ✅ SINGLE SOURCE OF TRUTH for ban checking.
+
         """
         if not user or not user.is_authenticated:
             return False, None
@@ -698,18 +671,13 @@ class BannedUser(models.Model):
         return False, None
 
 
-# ============================================================================
-# COMMENT REVISION MODEL - UUID Primary Key
-# ============================================================================
-
 class CommentRevision(models.Model):
     """
     Track edit history of comments.
     Stores previous versions for audit trail.
-    ✅ UPDATED: Now uses UUID primary key for consistency.
+
     """
     
-    # ✅ UUID Primary Key
     id = models.UUIDField(
         primary_key=True,
         default=uuid.uuid4,
@@ -760,15 +728,13 @@ class CommentRevision(models.Model):
         )
 
 
-# ============================================================================
-# MODERATION ACTION MODEL - UUID Primary Key
-# ============================================================================
+
 
 class ModerationAction(models.Model):
     """
     Log all moderation actions for accountability.
     Tracks who did what and when.
-    ✅ UPDATED: Now uses UUID primary key for consistency.
+
     """
     
     ACTION_CHOICES = (
@@ -782,7 +748,7 @@ class ModerationAction(models.Model):
         ('unbanned_user', _('Unbanned User')),
     )
     
-    # ✅ UUID Primary Key
+    
     id = models.UUIDField(
         primary_key=True,
         default=uuid.uuid4,

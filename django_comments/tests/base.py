@@ -1,15 +1,9 @@
-"""
-Base Test Utilities and Fixtures
-
-Provides common test setup, fixtures, and helper methods used across all test files.
-"""
 import uuid
 from django.contrib.auth import get_user_model
 from django.contrib.contenttypes.models import ContentType
 from django.test import TestCase
 from django.utils import timezone
 from datetime import timedelta
-
 
 User = get_user_model()
 
@@ -99,9 +93,6 @@ class BaseCommentTestCase(TestCase):
         self.test_obj = self.regular_user
         self.test_obj_id = str(self.test_obj.pk)
         
-    # ========================================================================
-    # HELPER METHODS - Comment Creation
-    # ========================================================================
     
     def create_comment(self, **kwargs):
         """
@@ -163,10 +154,7 @@ class BaseCommentTestCase(TestCase):
         }
         defaults.update(kwargs)
         return self.create_comment(**defaults)
-    
-    # ========================================================================
-    # HELPER METHODS - Flag Creation
-    # ========================================================================
+
     
     def create_flag(self, comment=None, **kwargs):
         """
