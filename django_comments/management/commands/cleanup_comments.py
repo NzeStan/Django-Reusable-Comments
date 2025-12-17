@@ -81,15 +81,15 @@ class Command(BaseCommand):
             ))
             return
         
-        # Build Q objects for filtering (FIXED: avoiding queryset union issues)
-        q_filters = Q(pk__in=[])  # Start with empty Q object
+        # Build list of Q objects for filtering
+        q_objects = []
         
         # Add age-based filtering if days is specified
         if days is not None:
             cutoff_date = timezone.now() - timedelta(days=days)
             
             # Always filter on age + non-public (preserve public comments regardless of age)
-            q_filters |= Q(created_at__lt=cutoff_date, is_public=False)
+            q_objects.append(Q(created_at__lt=cutoff_date, is_public=False))
             
             if verbose:
                 age_count = Comment.objects.filter(
@@ -101,7 +101,8 @@ class Command(BaseCommand):
         
         # Add explicit non-public removal if requested (and days not specified)
         if remove_non_public and days is None:
-            q_filters |= Q(is_public=False) | Q(is_removed=True)
+            q_objects.append(Q(is_public=False))
+            q_objects.append(Q(is_removed=True))
             
             if verbose:
                 non_public_count = Comment.objects.filter(
@@ -111,7 +112,7 @@ class Command(BaseCommand):
         
         # Add spam filtering if requested
         if remove_spam:
-            q_filters |= Q(flags__flag='spam')
+            q_objects.append(Q(flags__flag='spam'))
             
             if verbose:
                 spam_count = Comment.objects.filter(flags__flag='spam').distinct().count()
@@ -119,15 +120,25 @@ class Command(BaseCommand):
         
         # Add general flag filtering if requested
         if remove_flagged:
-            q_filters |= Q(flags__isnull=False)
+            q_objects.append(Q(flags__isnull=False))
             
             if verbose:
                 flagged_count = Comment.objects.filter(flags__isnull=False).distinct().count()
                 self.stdout.write(f"Found {flagged_count} flagged comments")
         
+        # Build combined query using OR
+        if not q_objects:
+            self.stdout.write(self.style.SUCCESS("No comments to clean up."))
+            return
+        
+        # Combine all Q objects with OR
+        combined_q = q_objects[0]
+        for q in q_objects[1:]:
+            combined_q |= q
+        
         # Get comments to delete using the combined Q filters
         # Use distinct() to avoid duplicates when using flags relationship
-        comments_to_delete_qs = Comment.objects.filter(q_filters).distinct()
+        comments_to_delete_qs = Comment.objects.filter(combined_q).distinct()
         
         # Get the final count of comments to delete
         count = comments_to_delete_qs.count()

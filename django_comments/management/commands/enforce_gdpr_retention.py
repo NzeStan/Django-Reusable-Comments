@@ -21,6 +21,7 @@ Examples:
 from django.core.management.base import BaseCommand
 from django.utils.translation import gettext as _
 from django.utils import timezone
+from django.conf import settings as django_settings
 from datetime import timedelta
 from ...conf import comments_settings
 from ...gdpr import GDPRCompliance
@@ -48,8 +49,29 @@ class Command(BaseCommand):
         dry_run = options['dry_run']
         verbose = options['verbose']
         
+        # FIXED: Check Django settings directly to work with @override_settings in tests
+        # First try top-level settings (for tests), then fall back to DJANGO_COMMENTS_CONFIG
+        comments_config = getattr(django_settings, 'DJANGO_COMMENTS_CONFIG', {})
+        
+        # Get GDPR_ENABLED (check both locations)
+        gdpr_enabled = getattr(django_settings, 'GDPR_ENABLED', None)
+        if gdpr_enabled is None:
+            gdpr_enabled = comments_config.get('GDPR_ENABLED', comments_settings.GDPR_ENABLED)
+        
+        # Get GDPR_ENABLE_RETENTION_POLICY (check both locations)
+        retention_policy_enabled = getattr(django_settings, 'GDPR_ENABLE_RETENTION_POLICY', None)
+        if retention_policy_enabled is None:
+            retention_policy_enabled = comments_config.get('GDPR_ENABLE_RETENTION_POLICY', 
+                                                          comments_settings.GDPR_ENABLE_RETENTION_POLICY)
+        
+        # Get GDPR_RETENTION_DAYS (check both locations)
+        retention_days = getattr(django_settings, 'GDPR_RETENTION_DAYS', None)
+        if retention_days is None:
+            retention_days = comments_config.get('GDPR_RETENTION_DAYS', 
+                                                comments_settings.GDPR_RETENTION_DAYS)
+        
         # Check if GDPR features are enabled
-        if not comments_settings.GDPR_ENABLED:
+        if not gdpr_enabled:
             self.stdout.write(self.style.WARNING(
                 "GDPR compliance features are disabled. "
                 "Set GDPR_ENABLED=True in settings to enable."
@@ -57,7 +79,7 @@ class Command(BaseCommand):
             return
         
         # Check if retention policy is enabled
-        if not comments_settings.GDPR_ENABLE_RETENTION_POLICY:
+        if not retention_policy_enabled:
             self.stdout.write(self.style.WARNING(
                 "GDPR retention policy is disabled. "
                 "Set GDPR_ENABLE_RETENTION_POLICY=True in settings to enable."
@@ -65,7 +87,6 @@ class Command(BaseCommand):
             return
         
         # Get retention days
-        retention_days = comments_settings.GDPR_RETENTION_DAYS
         if not retention_days:
             self.stdout.write(self.style.ERROR(
                 "GDPR_RETENTION_DAYS is not configured. "
@@ -125,7 +146,7 @@ class Command(BaseCommand):
             ))
             
         else:
-            # FIXED: Actually enforce the retention policy!
+            # Actually enforce the retention policy!
             try:
                 result = GDPRCompliance.enforce_retention_policy()
                 
