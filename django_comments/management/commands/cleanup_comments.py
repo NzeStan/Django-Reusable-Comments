@@ -126,11 +126,11 @@ class Command(BaseCommand):
                 self.stdout.write(f"Found {flagged_count} flagged comments")
         
         # Get comments to delete using the combined Q filters
-        # FIXED: Use distinct() to avoid duplicates when using flags relationship
-        comments_to_delete = Comment.objects.filter(q_filters).distinct()
+        # Use distinct() to avoid duplicates when using flags relationship
+        comments_to_delete_qs = Comment.objects.filter(q_filters).distinct()
         
         # Get the final count of comments to delete
-        count = comments_to_delete.count()
+        count = comments_to_delete_qs.count()
         
         if count == 0:
             self.stdout.write(self.style.SUCCESS("No comments to clean up."))
@@ -143,7 +143,7 @@ class Command(BaseCommand):
             
             if verbose:
                 # Show sample of comments that would be deleted
-                sample = comments_to_delete[:10]
+                sample = list(comments_to_delete_qs[:10])
                 self.stdout.write("Sample of comments that would be deleted:")
                 for comment in sample:
                     content_preview = comment.content[:50] if len(comment.content) > 50 else comment.content
@@ -152,8 +152,12 @@ class Command(BaseCommand):
                 if count > 10:
                     self.stdout.write(f"... and {count - 10} more")
         else:
-            # Actually delete the comments
-            deleted_count, details = comments_to_delete.delete()
+            # FIXED: Cannot delete() a distinct() queryset directly
+            # Get the PKs first, then delete using those PKs
+            comment_pks = list(comments_to_delete_qs.values_list('pk', flat=True))
+            
+            # Delete using PKs (no distinct needed)
+            deleted_count, details = Comment.objects.filter(pk__in=comment_pks).delete()
             
             self.stdout.write(self.style.SUCCESS(
                 f"Successfully deleted {deleted_count} comments."

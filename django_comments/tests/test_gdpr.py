@@ -639,7 +639,7 @@ class UserDataExportTests(BaseCommentTestCase):
         self.assertIn('statistics', result)
         
         # Verify user info
-        self.assertEqual(result['user']['id'], self.regular_user.pk)
+        self.assertEqual(result['user']['id'], str(self.regular_user.pk))  # <-- FIXED: Added str()
         self.assertEqual(result['user']['username'], self.regular_user.username)
         self.assertEqual(result['user']['email'], self.regular_user.email)
     

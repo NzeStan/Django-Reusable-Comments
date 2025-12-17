@@ -102,7 +102,7 @@ class Command(BaseCommand):
                 return
             
             self.stdout.write(
-                f"Would anonymize {count} comment(s) created before {cutoff_date.date()}"
+                f"DRY RUN: Would anonymize {count} comment(s) created before {cutoff_date.date()}"
             )
             
             if verbose:
@@ -126,32 +126,26 @@ class Command(BaseCommand):
             
         else:
             # FIXED: Actually enforce the retention policy!
-            self.stdout.write("Enforcing retention policy...")
-            
             try:
                 result = GDPRCompliance.enforce_retention_policy()
                 
-                anonymized_count = result.get('comments_anonymized', 0)
+                count = result.get('comments_anonymized', 0)
                 
-                if anonymized_count == 0:
+                if count == 0:
                     self.stdout.write(self.style.SUCCESS(
-                        "✓ No comments needed anonymization"
+                        "✓ No comments need anonymization"
                     ))
                 else:
                     self.stdout.write(self.style.SUCCESS(
-                        f"✓ Successfully anonymized {anonymized_count} comment(s)"
+                        f"✓ Successfully anonymized {count} comment(s)"
                     ))
-                    
-                    if verbose:
-                        self.stdout.write(
-                            f"\nRetention policy details:"
-                            f"\n  Retention days: {result.get('retention_days')}"
-                            f"\n  Cutoff date: {result.get('cutoff_date')}"
-                            f"\n  Comments anonymized: {anonymized_count}"
-                        )
                 
+                if verbose:
+                    self.stdout.write(f"\nRetention days: {result.get('retention_days')}")
+                    self.stdout.write(f"Cutoff date: {result.get('cutoff_date')}")
+                    
             except Exception as e:
                 self.stdout.write(self.style.ERROR(
-                    f"✗ Error enforcing retention policy: {e}"
+                    f"Error enforcing retention policy: {e}"
                 ))
                 raise
