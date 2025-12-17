@@ -310,13 +310,13 @@ class CommentSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(str(e))
     
 
-    # def validate_user_name(self, value):
-    #     if len(value) > 100:
-    #         raise serializers.ValidationError("Name too long")
-    #     # Only allow alphanumeric and basic punctuation
-    #     if not re.match(r'^[\w\s\-.,\']+$', value):
-    #         raise serializers.ValidationError("Invalid characters in name")
-    #     return value
+    def validate_user_name(self, value):
+        if len(value) > 100:
+            raise serializers.ValidationError("Name too long")
+        # Only allow alphanumeric and basic punctuation
+        if not re.match(r'^[\w\s\-.,\']+$', value):
+            raise serializers.ValidationError("Invalid characters in name")
+        return value
     
     
     def validate(self, data):

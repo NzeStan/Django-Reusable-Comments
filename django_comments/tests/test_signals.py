@@ -356,15 +356,16 @@ class PostSaveAutomaticFlagsTests(SignalTestMixin, BaseCommentTestCase):
 class TriggerNotificationsTests(SignalTestMixin, BaseCommentTestCase):
     """Test trigger_notifications function."""
     
-    @override_settings(COMMENTS={'SEND_NOTIFICATIONS': False})
     @patch('django_comments.notifications.notify_new_comment')
     def test_notifications_disabled_returns_early(self, mock_notify):
         """Test trigger_notifications returns early when disabled."""
-        # When notifications are disabled, creating a comment shouldn't trigger notifications
-        comment = self.create_comment(content="Test")
-        
-        # Should not call notification functions
-        mock_notify.assert_not_called()
+        # Patch settings directly to disable notifications
+        with patch.object(comments_settings, 'SEND_NOTIFICATIONS', False):
+            # When notifications are disabled, creating a comment shouldn't trigger notifications
+            comment = self.create_comment(content="Test")
+            
+            # Should not call notification functions
+            mock_notify.assert_not_called()
     
     @override_settings(COMMENTS={'SEND_NOTIFICATIONS': True})
     @patch('django_comments.notifications.notify_new_comment')
@@ -450,11 +451,19 @@ class FlagCommentTests(SignalTestMixin, BaseCommentTestCase):
         flag = flag_comment(comment, self.regular_user, flag='spam', reason='Test spam')
         
         self.assertIsInstance(flag, CommentFlag)
-        # GenericForeignKey - access via comment property
-        self.assertEqual(flag.comment, comment)
         self.assertEqual(flag.user, self.regular_user)
         self.assertEqual(flag.flag, 'spam')
         self.assertEqual(flag.reason, 'Test spam')
+        
+        # Verify GenericForeignKey fields point to the correct comment
+        # Testing underlying fields is more reliable than accessing the GFK descriptor
+        from django.contrib.contenttypes.models import ContentType
+        ct = ContentType.objects.get_for_model(comment)
+        self.assertEqual(flag.comment_type, ct)
+        self.assertEqual(flag.comment_id, str(comment.pk))
+        
+        # Also verify we can find the flag through the reverse relationship
+        self.assertIn(flag, comment.flags.all())
     
     def test_flag_comment_sends_signal(self):
         """Test flag_comment sends comment_flagged signal."""
