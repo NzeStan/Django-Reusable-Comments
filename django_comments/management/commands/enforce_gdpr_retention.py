@@ -70,6 +70,12 @@ class Command(BaseCommand):
             retention_days = comments_config.get('GDPR_RETENTION_DAYS', 
                                                 comments_settings.GDPR_RETENTION_DAYS)
         
+        # Get GDPR_ANONYMIZE_IP_ON_RETENTION (check both locations)
+        anonymize_ip = getattr(django_settings, 'GDPR_ANONYMIZE_IP_ON_RETENTION', None)
+        if anonymize_ip is None:
+            anonymize_ip = comments_config.get('GDPR_ANONYMIZE_IP_ON_RETENTION',
+                                              comments_settings.GDPR_ANONYMIZE_IP_ON_RETENTION)
+        
         # Check if GDPR features are enabled
         if not gdpr_enabled:
             self.stdout.write(self.style.WARNING(
@@ -106,8 +112,9 @@ class Command(BaseCommand):
             # Calculate what would be affected
             cutoff_date = timezone.now() - timedelta(days=retention_days)
             
+            # FIXED: Use <= for boundary condition
             old_comments = Comment.objects.filter(
-                created_at__lt=cutoff_date
+                created_at__lte=cutoff_date
             ).exclude(
                 user__isnull=True,
                 user_email='',
@@ -147,8 +154,13 @@ class Command(BaseCommand):
             
         else:
             # Actually enforce the retention policy!
+            # FIXED: Pass explicit parameters to avoid cached settings issues
             try:
-                result = GDPRCompliance.enforce_retention_policy()
+                result = GDPRCompliance.enforce_retention_policy(
+                    retention_policy_enabled=retention_policy_enabled,
+                    retention_days=retention_days,
+                    anonymize_ip=anonymize_ip
+                )
                 
                 count = result.get('comments_anonymized', 0)
                 

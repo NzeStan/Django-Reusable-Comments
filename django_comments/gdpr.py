@@ -1,75 +1,80 @@
 """
-GDPR Compliance Utilities
-==========================
+GDPR compliance utilities for django-reusable-comments.
 
-Provides utilities for handling personal data in compliance with GDPR regulations.
-
-Features:
-- Data anonymization
-- Data export
-- Data deletion
-- Consent tracking
+Provides functionality for:
+- Anonymizing user data in comments
+- Data export (Right to Data Portability)
+- Data deletion (Right to Erasure)
 - Retention policy enforcement
+
+These utilities help ensure compliance with GDPR requirements.
 """
 
-import logging
 from datetime import timedelta
-from typing import List, Dict, Any, Optional
+from typing import Dict, Any
+import logging
+
 from django.utils import timezone
-from django.contrib.auth import get_user_model
-from django.core.exceptions import ObjectDoesNotExist
+from django.conf import settings as django_settings
+
 from .conf import comments_settings
 from .utils import get_comment_model
 
-User = get_user_model()
 Comment = get_comment_model()
 logger = logging.getLogger(comments_settings.LOGGER_NAME)
 
 
 class GDPRCompliance:
     """
-    Handle GDPR compliance for comment system.
+    Utilities for GDPR compliance in comment system.
     
-    Key principles:
-    - Data minimization
-    - Storage limitation
-    - Purpose limitation
-    - Right to erasure
-    - Right to data portability
+    Provides methods for:
+    - Anonymizing personal data
+    - Exporting user data
+    - Deleting user data
+    - Enforcing retention policies
     """
     
     @staticmethod
     def anonymize_ip_address(ip_address: str) -> str:
         """
-        Anonymize IP address by zeroing last octet (IPv4) or last 80 bits (IPv6).
+        Anonymize an IP address for GDPR compliance.
         
-        This maintains geographic information while protecting user identity.
-        
-        Examples:
-            192.168.1.100 -> 192.168.1.0
-            2001:0db8:85a3:0000:0000:8a2e:0370:7334 -> 2001:0db8:85a3:0000:0000::
+        IPv4: 192.168.1.100 -> 192.168.1.0
+        IPv6: 2001:0db8:85a3::8a2e:0370:7334 -> 2001:0db8:85a3::
+        Empty/None: Returns empty string
         
         Args:
-            ip_address: Full IP address
+            ip_address: IP address to anonymize
         
         Returns:
-            Anonymized IP address
+            Anonymized IP address or empty string
+        
+        Example:
+            >>> GDPRCompliance.anonymize_ip_address('192.168.1.100')
+            '192.168.1.0'
+            >>> GDPRCompliance.anonymize_ip_address(None)
+            ''
         """
+        # FIXED: Return empty string for None or empty input
         if not ip_address:
             return ''
         
         try:
-            if ':' in ip_address:  # IPv6
-                # Keep first 48 bits (network prefix), zero the rest
+            # Check if IPv6
+            if ':' in ip_address:
+                # Keep first 3 groups, zero the rest
                 parts = ip_address.split(':')
-                return ':'.join(parts[:3]) + ':0000:0000:0000:0000:0000'
-            else:  # IPv4
-                # Zero the last octet
+                return ':'.join(parts[:3]) + '::'
+            else:
+                # IPv4: Keep first 3 octets, zero the last
                 parts = ip_address.split('.')
+                if len(parts) != 4:
+                    return ''
                 return '.'.join(parts[:3]) + '.0'
         except Exception as e:
             logger.error(f"Failed to anonymize IP {ip_address}: {e}")
-            return '0.0.0.0'
+            return ''
     
     @staticmethod
     def anonymize_comment(comment) -> None:
@@ -97,6 +102,9 @@ class GDPRCompliance:
                 comment.ip_address = GDPRCompliance.anonymize_ip_address(
                     comment.ip_address or ''
                 )
+                # FIXED: Set to None if result is empty string
+                if not comment.ip_address:
+                    comment.ip_address = None
             else:
                 comment.ip_address = None
             
@@ -232,145 +240,76 @@ class GDPRCompliance:
             user: User instance
         
         Returns:
-            Dictionary containing all user data
+            Dictionary with all user data
         
         Example:
             >>> from django_comments.gdpr import GDPRCompliance
-            >>> import json
             >>> user = User.objects.get(username='john')
             >>> data = GDPRCompliance.export_user_data(user)
-            >>> with open('user_data.json', 'w') as f:
-            >>>     json.dump(data, f, indent=2, default=str)
+            >>> # Save to JSON file for user download
         """
-        from .models import CommentFlag, BannedUser, ModerationAction, CommentRevision
-        from django.contrib.contenttypes.models import ContentType
+        from .models import CommentFlag, BannedUser, ModerationAction
         
         try:
             # Export comments
-            comments = Comment.objects.filter(user=user).select_related(
-                'content_type', 'parent'
+            comments = Comment.objects.filter(user=user).values(
+                'id', 'content', 'created_at', 'updated_at', 
+                'is_public', 'is_removed', 'user_name', 'user_email',
+                'ip_address', 'content_type__model', 'object_id'
             )
-            comments_data = []
-            
-            for comment in comments:
-                comments_data.append({
-                    'id': str(comment.pk),
-                    'content': comment.content,
-                    'created_at': comment.created_at.isoformat(),
-                    'updated_at': comment.updated_at.isoformat(),
-                    'is_public': comment.is_public,
-                    'is_removed': comment.is_removed,
-                    'commented_on': {
-                        'type': f"{comment.content_type.app_label}.{comment.content_type.model}",
-                        'id': comment.object_id,
-                        'repr': str(comment.content_object) if comment.content_object else None,
-                    },
-                    'parent_id': str(comment.parent.pk) if comment.parent else None,
-                    'ip_address': comment.ip_address,
-                    'user_agent': comment.user_agent,
-                })
             
             # Export flags created by user
-            flags = CommentFlag.objects.filter(user=user).select_related(
-                'comment_type'
+            flags = CommentFlag.objects.filter(user=user).values(
+                'id', 'flag', 'reason', 'created_at',
+                'comment_type__model', 'comment_id'
             )
-            flags_data = []
             
-            for flag in flags:
-                flags_data.append({
-                    'id': str(flag.pk),
-                    'flag_type': flag.flag,
-                    'reason': flag.reason,
-                    'created_at': flag.created_at.isoformat(),
-                    'reviewed': flag.reviewed,
-                    'comment_id': flag.comment_id,
-                })
+            # FIXED: Use correct field names - created_at and banned_until
+            # Also exclude is_active as it's a @property, not a database field
+            bans = BannedUser.objects.filter(user=user).values(
+                'reason', 'created_at', 'banned_until'
+            )
             
-            # Export bans (where user is subject)
-            bans = BannedUser.objects.filter(user=user).select_related('banned_by')
-            bans_data = []
+            # Export moderation actions on user's comments
+            moderation_actions = ModerationAction.objects.filter(
+                moderator=user
+            ).values(
+                'action', 'reason', 'timestamp'
+            )
             
-            for ban in bans:
-                bans_data.append({
-                    'id': str(ban.pk),
-                    'reason': ban.reason,
-                    'banned_until': ban.banned_until.isoformat() if ban.banned_until else None,
-                    'is_active': ban.is_active,
-                    'banned_by': ban.banned_by.get_username() if ban.banned_by else 'System',
-                    'created_at': ban.created_at.isoformat(),
-                })
-            
-            # Export moderation actions performed by user
-            actions = ModerationAction.objects.filter(moderator=user)
-            actions_data = []
-            
-            for action in actions:
-                actions_data.append({
-                    'id': str(action.pk),
-                    'action': action.action,
-                    'reason': action.reason,
-                    'timestamp': action.timestamp.isoformat(),
-                    'comment_id': action.comment_id,
-                })
-            
-            # Export comment revisions
-            revisions = CommentRevision.objects.filter(edited_by=user)
-            revisions_data = []
-            
-            for revision in revisions:
-                revisions_data.append({
-                    'id': str(revision.pk),
-                    'comment_id': revision.comment_id,
-                    'content': revision.content,
-                    'edited_at': revision.edited_at.isoformat(),
-                })
-            
-            # Helper function to convert UUIDs to strings
-            def convert_uuids(obj):
-                """Recursively convert UUIDs to strings for JSON serialization."""
-                import uuid
-                if isinstance(obj, dict):
-                    return {k: convert_uuids(v) for k, v in obj.items()}
-                elif isinstance(obj, list):
-                    return [convert_uuids(item) for item in obj]
-                elif isinstance(obj, uuid.UUID):
-                    return str(obj)
-                return obj
-            
-            result = {
+            data = {
+                'user_id': str(user.pk),
+                'username': user.get_username(),
                 'export_date': timezone.now().isoformat(),
-                'user': {
-                    'id': user.pk,
-                    'username': user.get_username(),
-                    'email': user.email,
-                },
-                'comments': comments_data,
-                'flags_created': flags_data,
-                'bans_received': bans_data,
-                'moderation_actions': actions_data,
-                'comment_revisions': revisions_data,
-                'statistics': {
-                    'total_comments': len(comments_data),
-                    'total_flags_created': len(flags_data),
-                    'total_bans': len(bans_data),
-                    'total_moderation_actions': len(actions_data),
-                    'total_revisions': len(revisions_data),
-                }
+                'comments': list(comments),
+                'flags_created': list(flags),
+                'bans': list(bans),
+                'moderation_actions': list(moderation_actions),
             }
             
-            # Convert all UUIDs to strings for JSON serialization
-            return convert_uuids(result)
+            logger.info(f"Exported data for user {user.pk}")
+            return data
             
         except Exception as e:
-            logger.error(f"Failed to export user data for user {user.pk}: {e}")
+            logger.error(f"Failed to export data for user {user.pk}: {e}")
             raise
     
     @staticmethod
-    def enforce_retention_policy() -> Dict[str, int]:
+    def enforce_retention_policy(
+        retention_policy_enabled: bool = None,
+        retention_days: int = None,
+        anonymize_ip: bool = None
+    ) -> Dict[str, Any]:
         """
-        Enforce data retention policy by anonymizing old comments.
+        Enforce data retention policy by anonymizing old personal data.
         
+        GDPR retention compliance implementation.
         Should be run periodically (e.g., via cron job or celery task).
+        
+        Args:
+            retention_policy_enabled: Whether retention policy is enabled (defaults to settings)
+            retention_days: Number of days to retain data (defaults to settings)
+            anonymize_ip: Whether to anonymize IPs instead of removing (defaults to settings)
         
         Returns:
             Dictionary with counts of anonymized items
@@ -378,10 +317,23 @@ class GDPRCompliance:
         Example:
             # In management command or celery task
             >>> from django_comments.gdpr import GDPRCompliance
-            >>> result = GDPRCompliance.enforce_retention_policy()
+            >>> result = GDPRCompliance.enforce_retention_policy(
+            ...     retention_policy_enabled=True,
+            ...     retention_days=365
+            ... )
             >>> print(f"Anonymized {result['comments_anonymized']} comments")
         """
-        if not comments_settings.GDPR_ENABLE_RETENTION_POLICY:
+        # Use provided parameters or fall back to settings
+        if retention_policy_enabled is None:
+            retention_policy_enabled = comments_settings.GDPR_ENABLE_RETENTION_POLICY
+        
+        if retention_days is None:
+            retention_days = comments_settings.GDPR_RETENTION_DAYS
+        
+        if anonymize_ip is None:
+            anonymize_ip = comments_settings.GDPR_ANONYMIZE_IP_ON_RETENTION
+        
+        if not retention_policy_enabled:
             logger.info("Retention policy is disabled")
             return {
                 'comments_anonymized': 0,
@@ -389,7 +341,6 @@ class GDPRCompliance:
                 'retention_days': None
             }
         
-        retention_days = comments_settings.GDPR_RETENTION_DAYS
         if not retention_days:
             logger.warning("Retention policy enabled but GDPR_RETENTION_DAYS not set")
             return {
@@ -400,21 +351,31 @@ class GDPRCompliance:
         
         cutoff_date = timezone.now() - timedelta(days=retention_days)
         
-        # Find old comments that haven't been anonymized
+        # FIXED: Use <= instead of < for boundary condition
+        # Comments created exactly at the boundary should be included
         old_comments = Comment.objects.filter(
-            created_at__lt=cutoff_date,
-            # Only anonymize if they still have personal data
+            created_at__lte=cutoff_date
         ).exclude(
             user__isnull=True,
             user_email='',
-            ip_address__isnull=True,
+            ip_address__isnull=True
         )
         
         count = 0
         for comment in old_comments:
             try:
+                # Temporarily override the IP anonymization setting if provided
+                if anonymize_ip is not None:
+                    original_setting = comments_settings.GDPR_ANONYMIZE_IP_ON_RETENTION
+                    comments_settings.GDPR_ANONYMIZE_IP_ON_RETENTION = anonymize_ip
+                    
                 GDPRCompliance.anonymize_comment(comment)
                 count += 1
+                
+                # Restore original setting
+                if anonymize_ip is not None:
+                    comments_settings.GDPR_ANONYMIZE_IP_ON_RETENTION = original_setting
+                    
             except Exception as e:
                 logger.error(f"Failed to anonymize comment {comment.pk}: {e}")
         
@@ -449,6 +410,6 @@ def export_user_data(user) -> Dict[str, Any]:
     return GDPRCompliance.export_user_data(user)
 
 
-def enforce_retention_policy() -> Dict[str, int]:
+def enforce_retention_policy(**kwargs) -> Dict[str, int]:
     """Enforce data retention policy."""
-    return GDPRCompliance.enforce_retention_policy()
+    return GDPRCompliance.enforce_retention_policy(**kwargs)

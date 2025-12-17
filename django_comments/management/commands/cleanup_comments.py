@@ -17,7 +17,7 @@ Usage:
 from datetime import timedelta
 import logging
 
-from django.core.management.base import BaseCommand
+from django.core.management.base import BaseCommand, CommandError
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 from django.db.models import Q
@@ -66,16 +66,21 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
-        days = options['days'] or comments_settings.CLEANUP_AFTER_DAYS
+        days = options.get('days')
         dry_run = options['dry_run']
         remove_spam = options['remove_spam']
         remove_non_public = options['remove_non_public']
         remove_flagged = options['remove_flagged']
         verbose = options['verbose']
         
-        # If no cleanup days are configured and no explicit flags are set, 
-        # there's nothing to do
-        if days is None and not (remove_spam or remove_non_public or remove_flagged):
+        # FIXED: Only use setting if --days was NOT provided at all
+        # options.get('days') returns None if not provided
+        if days is None and not any([remove_spam, remove_non_public, remove_flagged]):
+            # No explicit flags, check if there's a days setting
+            days = comments_settings.CLEANUP_AFTER_DAYS
+        
+        # If still nothing to do, exit
+        if days is None and not any([remove_spam, remove_non_public, remove_flagged]):
             self.stdout.write(self.style.SUCCESS(
                 "No comments to clean up."
             ))
@@ -86,14 +91,15 @@ class Command(BaseCommand):
         
         # Add age-based filtering if days is specified
         if days is not None:
+            # FIXED: Use <= not < for exact boundary
             cutoff_date = timezone.now() - timedelta(days=days)
             
-            # Always filter on age + non-public (preserve public comments regardless of age)
-            q_objects.append(Q(created_at__lt=cutoff_date, is_public=False))
+            # Delete non-public comments older than cutoff
+            q_objects.append(Q(created_at__lte=cutoff_date, is_public=False))
             
             if verbose:
                 age_count = Comment.objects.filter(
-                    created_at__lt=cutoff_date, is_public=False
+                    created_at__lte=cutoff_date, is_public=False
                 ).count()
                 self.stdout.write(
                     f"Found {age_count} non-public comments older than {days} days"
@@ -101,8 +107,8 @@ class Command(BaseCommand):
         
         # Add explicit non-public removal if requested (and days not specified)
         if remove_non_public and days is None:
-            q_objects.append(Q(is_public=False))
-            q_objects.append(Q(is_removed=True))
+            # FIXED: Combine in single Q object
+            q_objects.append(Q(is_public=False) | Q(is_removed=True))
             
             if verbose:
                 non_public_count = Comment.objects.filter(
@@ -166,6 +172,10 @@ class Command(BaseCommand):
             # FIXED: Cannot delete() a distinct() queryset directly
             # Get the PKs first, then delete using those PKs
             comment_pks = list(comments_to_delete_qs.values_list('pk', flat=True))
+            
+            if not comment_pks:
+                self.stdout.write(self.style.SUCCESS("No comments to clean up."))
+                return
             
             # Delete using PKs (no distinct needed)
             deleted_count, details = Comment.objects.filter(pk__in=comment_pks).delete()
