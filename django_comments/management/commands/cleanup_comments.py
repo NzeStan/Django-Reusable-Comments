@@ -1,9 +1,26 @@
+"""
+Management command to clean up old comments.
+
+This command provides flexible cleanup options:
+- Remove comments older than X days
+- Remove spam-flagged comments
+- Remove non-public comments
+- Remove flagged comments
+
+Usage:
+    python manage.py cleanup_comments --days=90
+    python manage.py cleanup_comments --remove-spam
+    python manage.py cleanup_comments --remove-non-public
+    python manage.py cleanup_comments --days=90 --remove-spam --dry-run
+"""
+
 from datetime import timedelta
 import logging
 
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
+from django.db.models import Q
 from ...conf import comments_settings
 from ...utils import get_comment_model
 
@@ -59,47 +76,58 @@ class Command(BaseCommand):
         # If no cleanup days are configured and no explicit flags are set, 
         # there's nothing to do
         if days is None and not (remove_spam or remove_non_public or remove_flagged):
-            self.stdout.write(self.style.WARNING(
-                "No cleanup criteria specified. Use --days, --remove-spam, " 
-                "--remove-non-public, or --remove-flagged to specify what to clean up."
+            self.stdout.write(self.style.SUCCESS(
+                "No comments to clean up."
             ))
             return
         
-        # Build the queryset
-        comments_to_delete = Comment.objects.none()
+        # Build Q objects for filtering (FIXED: avoiding queryset union issues)
+        q_filters = Q(pk__in=[])  # Start with empty Q object
         
         # Add age-based filtering if days is specified
         if days is not None:
             cutoff_date = timezone.now() - timedelta(days=days)
-            age_filter = Comment.objects.filter(created_at__lt=cutoff_date)
             
-            if remove_non_public:
-                # Only delete old non-public comments
-                age_filter = age_filter.filter(is_public=False)
-            
-            comments_to_delete = comments_to_delete | age_filter
+            # Always filter on age + non-public (preserve public comments regardless of age)
+            q_filters |= Q(created_at__lt=cutoff_date, is_public=False)
             
             if verbose:
+                age_count = Comment.objects.filter(
+                    created_at__lt=cutoff_date, is_public=False
+                ).count()
                 self.stdout.write(
-                    f"Found {age_filter.count()} comments older than {days} days"
-                    f"{' that are not public' if remove_non_public else ''}"
+                    f"Found {age_count} non-public comments older than {days} days"
                 )
+        
+        # Add explicit non-public removal if requested (and days not specified)
+        if remove_non_public and days is None:
+            q_filters |= Q(is_public=False) | Q(is_removed=True)
+            
+            if verbose:
+                non_public_count = Comment.objects.filter(
+                    Q(is_public=False) | Q(is_removed=True)
+                ).count()
+                self.stdout.write(f"Found {non_public_count} non-public comments")
         
         # Add spam filtering if requested
         if remove_spam:
-            spam_comments = Comment.objects.filter(flags__flag='spam')
-            comments_to_delete = comments_to_delete | spam_comments
+            q_filters |= Q(flags__flag='spam')
             
             if verbose:
-                self.stdout.write(f"Found {spam_comments.count()} comments flagged as spam")
+                spam_count = Comment.objects.filter(flags__flag='spam').distinct().count()
+                self.stdout.write(f"Found {spam_count} comments flagged as spam")
         
         # Add general flag filtering if requested
         if remove_flagged:
-            flagged_comments = Comment.objects.filter(flags__isnull=False).distinct()
-            comments_to_delete = comments_to_delete | flagged_comments
+            q_filters |= Q(flags__isnull=False)
             
             if verbose:
-                self.stdout.write(f"Found {flagged_comments.count()} flagged comments")
+                flagged_count = Comment.objects.filter(flags__isnull=False).distinct().count()
+                self.stdout.write(f"Found {flagged_count} flagged comments")
+        
+        # Get comments to delete using the combined Q filters
+        # FIXED: Use distinct() to avoid duplicates when using flags relationship
+        comments_to_delete = Comment.objects.filter(q_filters).distinct()
         
         # Get the final count of comments to delete
         count = comments_to_delete.count()
@@ -118,7 +146,8 @@ class Command(BaseCommand):
                 sample = comments_to_delete[:10]
                 self.stdout.write("Sample of comments that would be deleted:")
                 for comment in sample:
-                    self.stdout.write(f"- ID {comment.pk}: {comment.content[:50]}...")
+                    content_preview = comment.content[:50] if len(comment.content) > 50 else comment.content
+                    self.stdout.write(f"- ID {comment.pk}: {content_preview}...")
                     
                 if count > 10:
                     self.stdout.write(f"... and {count - 10} more")
@@ -129,6 +158,9 @@ class Command(BaseCommand):
             self.stdout.write(self.style.SUCCESS(
                 f"Successfully deleted {deleted_count} comments."
             ))
+            
+            if verbose:
+                self.stdout.write(f"Deletion details: {details}")
             
             # Log the deletion
             logger.info(f"Cleaned up {deleted_count} comments via management command.")

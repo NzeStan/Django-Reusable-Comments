@@ -325,7 +325,19 @@ class GDPRCompliance:
                     'edited_at': revision.edited_at.isoformat(),
                 })
             
-            return {
+            # Helper function to convert UUIDs to strings
+            def convert_uuids(obj):
+                """Recursively convert UUIDs to strings for JSON serialization."""
+                import uuid
+                if isinstance(obj, dict):
+                    return {k: convert_uuids(v) for k, v in obj.items()}
+                elif isinstance(obj, list):
+                    return [convert_uuids(item) for item in obj]
+                elif isinstance(obj, uuid.UUID):
+                    return str(obj)
+                return obj
+            
+            result = {
                 'export_date': timezone.now().isoformat(),
                 'user': {
                     'id': user.pk,
@@ -345,6 +357,9 @@ class GDPRCompliance:
                     'total_revisions': len(revisions_data),
                 }
             }
+            
+            # Convert all UUIDs to strings for JSON serialization
+            return convert_uuids(result)
             
         except Exception as e:
             logger.error(f"Failed to export user data for user {user.pk}: {e}")
@@ -368,12 +383,20 @@ class GDPRCompliance:
         """
         if not comments_settings.GDPR_ENABLE_RETENTION_POLICY:
             logger.info("Retention policy is disabled")
-            return {'comments_anonymized': 0}
+            return {
+                'comments_anonymized': 0,
+                'cutoff_date': None,
+                'retention_days': None
+            }
         
         retention_days = comments_settings.GDPR_RETENTION_DAYS
         if not retention_days:
             logger.warning("Retention policy enabled but GDPR_RETENTION_DAYS not set")
-            return {'comments_anonymized': 0}
+            return {
+                'comments_anonymized': 0,
+                'cutoff_date': None,
+                'retention_days': retention_days
+            }
         
         cutoff_date = timezone.now() - timedelta(days=retention_days)
         

@@ -20,8 +20,13 @@ Examples:
 
 from django.core.management.base import BaseCommand
 from django.utils.translation import gettext as _
+from django.utils import timezone
+from datetime import timedelta
 from ...conf import comments_settings
 from ...gdpr import GDPRCompliance
+from ...utils import get_comment_model
+
+Comment = get_comment_model()
 
 
 class Command(BaseCommand):
@@ -78,11 +83,6 @@ class Command(BaseCommand):
             ))
             
             # Calculate what would be affected
-            from datetime import timedelta
-            from django.utils import timezone
-            from ...utils import get_comment_model
-            
-            Comment = get_comment_model()
             cutoff_date = timezone.now() - timedelta(days=retention_days)
             
             old_comments = Comment.objects.filter(
@@ -106,13 +106,15 @@ class Command(BaseCommand):
             )
             
             if verbose:
+                self.stdout.write(f"\nRetention days: {retention_days}")
+                self.stdout.write(f"Cutoff date: {cutoff_date.date()}")
                 self.stdout.write("\nSample of comments that would be anonymized:")
                 for comment in old_comments[:5]:
                     self.stdout.write(
-                        f"  - ID: {comment.pk}"
-                        f"  Created: {comment.created_at.date()}"
-                        f"  Has IP: {bool(comment.ip_address)}"
-                        f"  Has Email: {bool(comment.user_email)}"
+                        f"  - ID: {comment.pk}, "
+                        f"Created: {comment.created_at.date()}, "
+                        f"Has IP: {bool(comment.ip_address)}, "
+                        f"Has Email: {bool(comment.user_email)}"
                     )
                 
                 if count > 5:
@@ -123,7 +125,7 @@ class Command(BaseCommand):
             ))
             
         else:
-            # Actually enforce the retention policy
+            # FIXED: Actually enforce the retention policy!
             self.stdout.write("Enforcing retention policy...")
             
             try:
