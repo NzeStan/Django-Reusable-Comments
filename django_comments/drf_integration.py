@@ -22,12 +22,22 @@ class CommentRateThrottle(UserRateThrottle):
     """
     scope = 'comment'
     
-    def __init__(self):
-        super().__init__()
+    def get_rate(self):
+        """
+        Override to use comment-specific rate limit if configured,
+        otherwise fall back to DRF's default rate lookup.
+        """
         # Use comment-specific rate limit if configured
         rate = comments_settings.API_RATE_LIMIT
         if rate:
-            self.rate = rate
+            return rate
+        
+        # Fall back to DRF's default behavior
+        try:
+            return super().get_rate()
+        except Exception:
+            # If no rate configured anywhere, return None (no throttling)
+            return None
     
     def allow_request(self, request, view):
         """
@@ -52,12 +62,22 @@ class CommentAnonRateThrottle(AnonRateThrottle):
     """
     scope = 'comment_anon'
     
-    def __init__(self):
-        super().__init__()
+    def get_rate(self):
+        """
+        Override to use anonymous-specific rate limit if configured,
+        otherwise fall back to DRF's default rate lookup.
+        """
         # Use anonymous-specific rate limit if configured
         rate = comments_settings.API_RATE_LIMIT_ANON
         if rate:
-            self.rate = rate
+            return rate
+        
+        # Fall back to DRF's default behavior
+        try:
+            return super().get_rate()
+        except Exception:
+            # If no rate configured anywhere, return None (no throttling)
+            return None
     
     def allow_request(self, request, view):
         """
@@ -84,14 +104,21 @@ class CommentBurstRateThrottle(UserRateThrottle):
     """
     scope = 'comment_burst'
     
-    def __init__(self):
-        super().__init__()
+    def get_rate(self):
+        """
+        Override to use burst rate limit if configured,
+        otherwise use default burst limit.
+        """
         rate = comments_settings.API_RATE_LIMIT_BURST
         if rate:
-            self.rate = rate
-        else:
-            # Default burst limit
-            self.rate = '5/min'
+            return rate
+        
+        # Fall back to DRF's default behavior
+        try:
+            return super().get_rate()
+        except Exception:
+            # If no rate configured anywhere, use default burst limit
+            return '5/min'
     
     def allow_request(self, request, view):
         """Check burst rate limit."""
@@ -127,6 +154,7 @@ def get_comment_throttle_classes():
         throttles.append(CommentBurstRateThrottle)
     
     return throttles
+
 
 class CommentPagination(PageNumberPagination):
     """
@@ -212,4 +240,3 @@ def get_comment_pagination_class():
         return ThreadedCommentPagination
     
     return CommentPagination
-
