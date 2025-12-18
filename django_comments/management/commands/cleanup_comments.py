@@ -66,21 +66,19 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
-        days = options.get('days')
+        days = options.get('days')  # Will be None if not provided
         dry_run = options['dry_run']
         remove_spam = options['remove_spam']
         remove_non_public = options['remove_non_public']
         remove_flagged = options['remove_flagged']
         verbose = options['verbose']
         
-        # FIXED: Only use setting if --days was NOT provided at all
-        # options.get('days') returns None if not provided
-        if days is None and not any([remove_spam, remove_non_public, remove_flagged]):
-            # No explicit flags, check if there's a days setting
+        # Use setting for days only if no explicit options provided
+        if days is None and not (remove_spam or remove_non_public or remove_flagged):
             days = comments_settings.CLEANUP_AFTER_DAYS
         
         # If still nothing to do, exit
-        if days is None and not any([remove_spam, remove_non_public, remove_flagged]):
+        if days is None and not (remove_spam or remove_non_public or remove_flagged):
             self.stdout.write(self.style.SUCCESS(
                 "No comments to clean up."
             ))
@@ -91,45 +89,88 @@ class Command(BaseCommand):
         
         # Add age-based filtering if days is specified
         if days is not None:
-            # FIXED: Use <= not < for exact boundary
-            cutoff_date = timezone.now() - timedelta(days=days)
+            # FIXED: Subtract 1-second buffer to handle timing issues
+            # This moves cutoff EARLIER in time, so comments at exact boundary
+            # won't be caught by microsecond timing differences
+            cutoff_date = timezone.now() - timedelta(days=days, seconds=1)
             
-            # Delete non-public comments older than cutoff
-            q_objects.append(Q(created_at__lte=cutoff_date, is_public=False))
+            # Delete non-public comments older than cutoff (strictly <)
+            q_objects.append(Q(created_at__lt=cutoff_date, is_public=False))
             
             if verbose:
                 age_count = Comment.objects.filter(
-                    created_at__lte=cutoff_date, is_public=False
+                    created_at__lt=cutoff_date, is_public=False
                 ).count()
                 self.stdout.write(
                     f"Found {age_count} non-public comments older than {days} days"
                 )
         
-        # Add explicit non-public removal if requested (and days not specified)
-        if remove_non_public and days is None:
-            # FIXED: Combine in single Q object
+        # Add explicit non-public removal if requested
+        # FIXED: Works independently of days filter
+        if remove_non_public:
+            # Remove ALL non-public/removed comments regardless of age
             q_objects.append(Q(is_public=False) | Q(is_removed=True))
             
             if verbose:
                 non_public_count = Comment.objects.filter(
                     Q(is_public=False) | Q(is_removed=True)
                 ).count()
-                self.stdout.write(f"Found {non_public_count} non-public comments")
+                self.stdout.write(f"Found {non_public_count} non-public/removed comments")
         
         # Add spam filtering if requested
         if remove_spam:
-            q_objects.append(Q(flags__flag='spam'))
+            # FIXED: GenericRelation queries need ContentType
+            # Get spam-flagged comment IDs directly from CommentFlag
+            from django.contrib.contenttypes.models import ContentType
+            from ...models import CommentFlag
+            import uuid
+            
+            comment_ct = ContentType.objects.get_for_model(Comment)
+            spam_comment_ids = CommentFlag.objects.filter(
+                comment_type=comment_ct,
+                flag='spam'
+            ).values_list('comment_id', flat=True).distinct()
+            
+            # Convert string UUIDs to UUID objects for pk__in filter
+            spam_pks = []
+            for cid in spam_comment_ids:
+                try:
+                    spam_pks.append(uuid.UUID(cid) if isinstance(cid, str) else cid)
+                except (ValueError, AttributeError):
+                    pass
+            
+            if spam_pks:
+                q_objects.append(Q(pk__in=spam_pks))
             
             if verbose:
-                spam_count = Comment.objects.filter(flags__flag='spam').distinct().count()
+                spam_count = len(spam_pks)
                 self.stdout.write(f"Found {spam_count} comments flagged as spam")
         
         # Add general flag filtering if requested
         if remove_flagged:
-            q_objects.append(Q(flags__isnull=False))
+            # FIXED: Same approach for all flags
+            from django.contrib.contenttypes.models import ContentType
+            from ...models import CommentFlag
+            import uuid
+            
+            comment_ct = ContentType.objects.get_for_model(Comment)
+            flagged_comment_ids = CommentFlag.objects.filter(
+                comment_type=comment_ct
+            ).values_list('comment_id', flat=True).distinct()
+            
+            # Convert string UUIDs to UUID objects for pk__in filter
+            flagged_pks = []
+            for cid in flagged_comment_ids:
+                try:
+                    flagged_pks.append(uuid.UUID(cid) if isinstance(cid, str) else cid)
+                except (ValueError, AttributeError):
+                    pass
+            
+            if flagged_pks:
+                q_objects.append(Q(pk__in=flagged_pks))
             
             if verbose:
-                flagged_count = Comment.objects.filter(flags__isnull=False).distinct().count()
+                flagged_count = len(flagged_pks)
                 self.stdout.write(f"Found {flagged_count} flagged comments")
         
         # Build combined query using OR

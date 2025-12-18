@@ -49,30 +49,33 @@ class Command(BaseCommand):
         dry_run = options['dry_run']
         verbose = options['verbose']
         
-        # FIXED: Check Django settings directly to work with @override_settings in tests
-        # First try top-level settings (for tests), then fall back to DJANGO_COMMENTS_CONFIG
+        # FIXED: Check Django settings directly using hasattr to distinguish None from not-set
         comments_config = getattr(django_settings, 'DJANGO_COMMENTS_CONFIG', {})
         
-        # Get GDPR_ENABLED (check both locations)
-        gdpr_enabled = getattr(django_settings, 'GDPR_ENABLED', None)
-        if gdpr_enabled is None:
+        # Get GDPR_ENABLED
+        if hasattr(django_settings, 'GDPR_ENABLED'):
+            gdpr_enabled = django_settings.GDPR_ENABLED
+        else:
             gdpr_enabled = comments_config.get('GDPR_ENABLED', comments_settings.GDPR_ENABLED)
         
-        # Get GDPR_ENABLE_RETENTION_POLICY (check both locations)
-        retention_policy_enabled = getattr(django_settings, 'GDPR_ENABLE_RETENTION_POLICY', None)
-        if retention_policy_enabled is None:
+        # Get GDPR_ENABLE_RETENTION_POLICY
+        if hasattr(django_settings, 'GDPR_ENABLE_RETENTION_POLICY'):
+            retention_policy_enabled = django_settings.GDPR_ENABLE_RETENTION_POLICY
+        else:
             retention_policy_enabled = comments_config.get('GDPR_ENABLE_RETENTION_POLICY', 
                                                           comments_settings.GDPR_ENABLE_RETENTION_POLICY)
         
-        # Get GDPR_RETENTION_DAYS (check both locations)
-        retention_days = getattr(django_settings, 'GDPR_RETENTION_DAYS', None)
-        if retention_days is None:
+        # Get GDPR_RETENTION_DAYS
+        if hasattr(django_settings, 'GDPR_RETENTION_DAYS'):
+            retention_days = django_settings.GDPR_RETENTION_DAYS
+        else:
             retention_days = comments_config.get('GDPR_RETENTION_DAYS', 
                                                 comments_settings.GDPR_RETENTION_DAYS)
         
-        # Get GDPR_ANONYMIZE_IP_ON_RETENTION (check both locations)
-        anonymize_ip = getattr(django_settings, 'GDPR_ANONYMIZE_IP_ON_RETENTION', None)
-        if anonymize_ip is None:
+        # Get GDPR_ANONYMIZE_IP_ON_RETENTION
+        if hasattr(django_settings, 'GDPR_ANONYMIZE_IP_ON_RETENTION'):
+            anonymize_ip = django_settings.GDPR_ANONYMIZE_IP_ON_RETENTION
+        else:
             anonymize_ip = comments_config.get('GDPR_ANONYMIZE_IP_ON_RETENTION',
                                               comments_settings.GDPR_ANONYMIZE_IP_ON_RETENTION)
         
@@ -112,9 +115,9 @@ class Command(BaseCommand):
             # Calculate what would be affected
             cutoff_date = timezone.now() - timedelta(days=retention_days)
             
-            # FIXED: Use <= for boundary condition
+            # Use < for "older than X days" - matches actual enforcement
             old_comments = Comment.objects.filter(
-                created_at__lte=cutoff_date
+                created_at__lt=cutoff_date
             ).exclude(
                 user__isnull=True,
                 user_email='',

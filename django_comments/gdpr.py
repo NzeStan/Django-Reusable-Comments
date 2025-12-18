@@ -240,7 +240,7 @@ class GDPRCompliance:
             user: User instance
         
         Returns:
-            Dictionary with all user data
+            Dictionary with all user data (all dates as ISO strings)
         
         Example:
             >>> from django_comments.gdpr import GDPRCompliance
@@ -248,43 +248,96 @@ class GDPRCompliance:
             >>> data = GDPRCompliance.export_user_data(user)
             >>> # Save to JSON file for user download
         """
-        from .models import CommentFlag, BannedUser, ModerationAction
+        from .models import CommentFlag, BannedUser, ModerationAction, CommentRevision
         
         try:
-            # Export comments
-            comments = Comment.objects.filter(user=user).values(
+            # Helper to convert datetime to ISO string
+            def to_iso(dt):
+                return dt.isoformat() if dt else None
+            
+            # Export comments with ISO dates
+            comments_raw = Comment.objects.filter(user=user).values(
                 'id', 'content', 'created_at', 'updated_at', 
                 'is_public', 'is_removed', 'user_name', 'user_email',
                 'ip_address', 'content_type__model', 'object_id'
             )
+            comments = []
+            for c in comments_raw:
+                comment_dict = dict(c)
+                comment_dict['id'] = str(comment_dict['id'])  # Convert UUID to string
+                comment_dict['created_at'] = to_iso(comment_dict['created_at'])
+                comment_dict['updated_at'] = to_iso(comment_dict['updated_at'])
+                comments.append(comment_dict)
             
-            # Export flags created by user
-            flags = CommentFlag.objects.filter(user=user).values(
+            # Export flags created by user with ISO dates
+            flags_raw = CommentFlag.objects.filter(user=user).values(
                 'id', 'flag', 'reason', 'created_at',
                 'comment_type__model', 'comment_id'
             )
+            flags = []
+            for f in flags_raw:
+                flag_dict = dict(f)
+                flag_dict['id'] = str(flag_dict['id'])
+                flag_dict['flag_type'] = flag_dict.pop('flag')  # Rename 'flag' to 'flag_type'
+                flag_dict['created_at'] = to_iso(flag_dict['created_at'])
+                flags.append(flag_dict)
             
-            # FIXED: Use correct field names - created_at and banned_until
-            # Also exclude is_active as it's a @property, not a database field
-            bans = BannedUser.objects.filter(user=user).values(
-                'reason', 'created_at', 'banned_until'
-            )
+            # Export bans received by user with ISO dates and is_active
+            bans_raw = BannedUser.objects.filter(user=user).select_related('banned_by')
+            bans = []
+            for ban in bans_raw:
+                ban_dict = {
+                    'reason': ban.reason,
+                    'created_at': to_iso(ban.created_at),
+                    'banned_until': to_iso(ban.banned_until),
+                    'is_active': ban.is_active,  # Property method
+                    'banned_by': ban.banned_by.get_username() if ban.banned_by else None,
+                }
+                bans.append(ban_dict)
             
-            # Export moderation actions on user's comments
-            moderation_actions = ModerationAction.objects.filter(
+            # Export moderation actions performed by user
+            actions_raw = ModerationAction.objects.filter(
                 moderator=user
-            ).values(
-                'action', 'reason', 'timestamp'
-            )
+            ).values('action', 'reason', 'timestamp')
+            actions = []
+            for a in actions_raw:
+                action_dict = dict(a)
+                action_dict['timestamp'] = to_iso(action_dict['timestamp'])
+                actions.append(action_dict)
+            
+            # Export comment revisions created by user
+            revisions_raw = CommentRevision.objects.filter(
+                edited_by=user
+            ).values('content', 'edited_at', 'comment_id')
+            revisions = []
+            for r in revisions_raw:
+                revision_dict = dict(r)
+                revision_dict['edited_at'] = to_iso(revision_dict['edited_at'])
+                revision_dict['comment_id'] = str(revision_dict['comment_id'])
+                revisions.append(revision_dict)
+            
+            # Calculate statistics
+            stats = {
+                'total_comments': len(comments),
+                'total_flags_created': len(flags),
+                'total_bans_received': len(bans),
+                'total_moderation_actions': len(actions),
+                'total_revisions': len(revisions),
+            }
             
             data = {
-                'user_id': str(user.pk),
-                'username': user.get_username(),
                 'export_date': timezone.now().isoformat(),
-                'comments': list(comments),
-                'flags_created': list(flags),
-                'bans': list(bans),
-                'moderation_actions': list(moderation_actions),
+                'user': {
+                    'id': str(user.pk),
+                    'username': user.get_username(),
+                    'email': user.email if hasattr(user, 'email') else '',
+                },
+                'comments': comments,
+                'flags_created': flags,
+                'bans_received': bans,
+                'moderation_actions': actions,
+                'comment_revisions': revisions,
+                'statistics': stats,
             }
             
             logger.info(f"Exported data for user {user.pk}")
@@ -351,10 +404,10 @@ class GDPRCompliance:
         
         cutoff_date = timezone.now() - timedelta(days=retention_days)
         
-        # FIXED: Use <= instead of < for boundary condition
-        # Comments created exactly at the boundary should be included
+        # FIXED: Use < for "older than X days" (strictly greater)
+        # Comment at exactly retention_days should NOT be anonymized
         old_comments = Comment.objects.filter(
-            created_at__lte=cutoff_date
+            created_at__lt=cutoff_date
         ).exclude(
             user__isnull=True,
             user_email='',
