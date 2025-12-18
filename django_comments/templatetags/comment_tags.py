@@ -27,16 +27,19 @@ def get_comment_count(obj, public_only=True):
         return 0
 
 
-@register.simple_tag
-def get_comments_for(obj, public_only=True):
+@register.simple_tag(takes_context=True)
+def get_comments_for(context, obj, include_private=False):
     """
-    Get all comments for an object (optimized query).
+    Get all comments for an object.
     
-    Usage in template:
-        {% get_comments_for post as comments %}
-        {% for comment in comments %}
-            ...
-        {% endfor %}
+    Args:
+        context: Template context (for request.user)
+        obj: Object to get comments for
+        include_private: If True, use user permissions (default: False, public only)
+    
+    Usage:
+        {% get_comments_for post as comments %}  {# Public only #}
+        {% get_comments_for post include_private=True as comments %}  {# Respects permissions #}
     """
     try:
         ct = ContentType.objects.get_for_model(obj)
@@ -45,13 +48,20 @@ def get_comments_for(obj, public_only=True):
             object_id=obj.pk
         ).optimized_for_list()
         
-        if public_only:
-            queryset = queryset.filter(is_public=True, is_removed=False)
+        if include_private:
+            # Respect user permissions
+            request = context.get('request')
+            if request and hasattr(request, 'user'):
+                queryset = queryset.visible_to_user(request.user)
+            else:
+                queryset = queryset.public_only()
+        else:
+            # Explicitly public only
+            queryset = queryset.public_only()
         
         return queryset.order_by('-created_at')
     except Exception:
         return Comment.objects.none()
-
 
 @register.simple_tag
 def get_root_comments_for(obj, public_only=True):

@@ -190,6 +190,29 @@ class CommentQuerySet(models.QuerySet):
             flags_count_annotated=Count('flags', distinct=True),
             children_count_annotated=Count('children', distinct=True)
         )
+    
+    def visible_to_user(self, user):
+        """Return comments visible to a specific user."""
+        from django.db.models import Q
+        
+        # Staff and superusers see everything
+        if hasattr(user, 'is_authenticated') and user.is_authenticated:
+            if user.is_staff or user.is_superuser:
+                return self
+        
+        # Anonymous users only see public, non-removed
+        if not hasattr(user, 'is_authenticated') or not user.is_authenticated:
+            return self.filter(is_public=True, is_removed=False)
+        
+        # Authenticated regular users see public + their own
+        return self.filter(
+            Q(is_public=True, is_removed=False) |
+            Q(user=user)
+        )
+
+    def public_only(self):
+        """Return only public, non-removed comments."""
+        return self.filter(is_public=True, is_removed=False)
 
 
 class CommentManager(models.Manager):
@@ -380,3 +403,5 @@ class CommentFlagManager(models.Manager):
         ).filter(
             flag_count__gte=min_flags
         ).order_by('-flag_count')
+    
+    

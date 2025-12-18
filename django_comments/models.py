@@ -26,6 +26,25 @@ class AbstractCommentBase(models.Model):
 class BaseCommentMixin(models.Model):
     """
     All comment fields and methods.
+    
+    USER IDENTITY PATTERN:
+    =====================
+    This model supports both authenticated and anonymous comments:
+    
+    1. AUTHENTICATED COMMENTS (user is not None):
+       - user: ForeignKey to User (ALWAYS populated)
+       - user_name: Empty string (NOT used, data comes from FK)
+       - user_email: Empty string (NOT used, data comes from FK)
+       - Display: Use user.get_full_name() or user.get_username()
+    
+    2. ANONYMOUS COMMENTS (user is None):
+       - user: None
+       - user_name: Stored name string (REQUIRED)
+       - user_email: Stored email string (REQUIRED per ALLOW_ANONYMOUS setting)
+       - Display: Use stored user_name value
+    
+    This design avoids data redundancy and staleness for authenticated users
+    while still supporting anonymous commenting when enabled.
     """
     
     content_type = models.ForeignKey(
@@ -47,11 +66,22 @@ class BaseCommentMixin(models.Model):
         on_delete=models.SET_NULL,
         null=True, blank=True,
         related_name='%(app_label)s_%(class)s_comments',
-        verbose_name=_('User')
+        verbose_name=_('User'),
+        help_text=_('The authenticated user who created this comment. Always use this for authenticated users.')
     )
-    
-    user_name = models.CharField(_('User name'), max_length=100, blank=True)
-    user_email = models.EmailField(_('User email'), blank=True)
+
+    user_name = models.CharField(
+        _('User name'), 
+        max_length=100, 
+        blank=True,
+        help_text=_('Name for ANONYMOUS comments only. Empty for authenticated users.')
+    )
+
+    user_email = models.EmailField(
+        _('User email'), 
+        blank=True,
+        help_text=_('Email for ANONYMOUS comments only. Empty for authenticated users.')
+    )
     ip_address = models.GenericIPAddressField(_('IP address'), blank=True, null=True)
     user_agent = models.TextField(_('User agent'), blank=True)
     content = models.TextField(_('Content'))

@@ -195,18 +195,11 @@ class CommentViewSet(viewsets.ModelViewSet):
     def _apply_query_optimizations(self, queryset):
         """
         Apply select_related and prefetch_related optimizations.
-        
-        This method handles all database query optimizations:
-        - Foreign key optimization with select_related
-        - Reverse relationship optimization with prefetch_related
-        - Action-specific optimizations (e.g., children for detail view)
-        
-        Args:
-            queryset: Base Comment queryset
-        
-        Returns:
-            Optimized queryset with minimal database queries
+        Reduces N+1 queries dramatically.
         """
+        from django.db import models
+        from .models import CommentFlag
+        
         # Optimize foreign key access
         queryset = queryset.select_related(
             'user',
@@ -223,17 +216,23 @@ class CommentViewSet(viewsets.ModelViewSet):
             )
         )
         
-        # For detail view, prefetch children
-        if self.action == 'retrieve':
-            queryset = queryset.prefetch_related(
-                models.Prefetch(
-                    'children',
-                    queryset=Comment.objects.select_related('user').filter(
-                        is_public=True,
-                        is_removed=False
-                    ).order_by('created_at')
-                )
+        # Prefetch children with proper visibility filtering
+        children_queryset = Comment.objects.select_related('user').visible_to_user(
+            self.request.user
+        ).order_by('created_at')
+        
+        queryset = queryset.prefetch_related(
+            models.Prefetch(
+                'children',
+                queryset=children_queryset
             )
+        )
+        
+        # Annotate with counts
+        queryset = queryset.annotate(
+            flags_count_annotated=models.Count('flags', distinct=True),
+            children_count_annotated=models.Count('children', distinct=True)
+        )
         
         return queryset
     
@@ -290,29 +289,8 @@ class CommentViewSet(viewsets.ModelViewSet):
         return bool(user_groups & privileged_groups)
     
     def _filter_for_regular_user(self, queryset, user):
-        """
-        Apply filters for regular (non-privileged) users.
-        
-        Regular users can see:
-        - All public, non-removed comments (everyone)
-        - Their own comments regardless of status (authenticated only)
-        
-        Args:
-            queryset: Comment queryset
-            user: User instance
-        
-        Returns:
-            Filtered queryset
-        """
-        if user.is_anonymous:
-            # Anonymous users only see public comments
-            return queryset.filter(is_public=True, is_removed=False)
-        
-        # Authenticated users see public comments + their own
-        return queryset.filter(
-            models.Q(is_public=True, is_removed=False) |
-            models.Q(user=user)
-        )
+        """Apply filters for regular users using manager method."""
+        return queryset.visible_to_user(user)
     
     def _apply_ordering(self, queryset):
         """

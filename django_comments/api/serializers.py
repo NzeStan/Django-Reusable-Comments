@@ -419,19 +419,28 @@ class CommentSerializer(serializers.ModelSerializer):
         """
         Handle validation for authenticated user comments.
         
-        Auto-fills user information from the authenticated user object:
-        - user_name: Full name or username
-        - user_email: User's email address
+        For authenticated users, we DO NOT populate user_name or user_email fields.
+        These fields are ONLY used for anonymous comments to store their identity.
+        
+        Authenticated user information is always retrieved from the live User object
+        via the ForeignKey relationship, ensuring data is always current and avoiding
+        redundancy/staleness issues.
         
         Args:
             data: Validated data dict
             user: Authenticated User instance
         
         Returns:
-            Updated data dict with user information
+            Updated data dict (user_name and user_email left empty/unpopulated)
         """
-        data["user_name"] = user.get_full_name() or user.get_username()
-        data["user_email"] = user.email
+        # Do NOT populate user_name/user_email for authenticated users
+        # These fields are reserved for anonymous comments only
+        # Authenticated user data comes from the FK relationship
+        
+        # Explicitly set to empty to ensure no residual data
+        data["user_name"] = ""
+        data["user_email"] = ""
+        
         return data
     
     def _validate_user_not_banned(self, user):

@@ -11,7 +11,7 @@ from django.contrib.contenttypes.models import ContentType
 from django.utils import timezone
 from django.contrib.auth import get_user_model
 from rest_framework.test import APIRequestFactory
-
+from rest_framework import serializers
 from django_comments.tests.base import BaseCommentTestCase
 from django_comments.api.serializers import (
     UserSerializer,
@@ -819,8 +819,8 @@ class CreateCommentFlagSerializerTests(BaseCommentTestCase):
         
         self.assertEqual(flag.flag, 'inappropriate')
     
-    def test_update_existing_flag(self):
-        """Test that creating duplicate flag updates existing one."""
+    def test_duplicate_flag_type_raises_error(self):
+        """Test that creating duplicate flag with SAME type raises ValidationError."""
         first_data = {
             'flag_type': 'spam',
             'reason': 'First reason',
@@ -831,17 +831,39 @@ class CreateCommentFlagSerializerTests(BaseCommentTestCase):
         self.assertTrue(serializer1.is_valid())
         flag1 = serializer1.save()
         
+        # Attempt to create duplicate flag with same type
         second_data = {
-            'flag_type': 'harassment',
+            'flag_type': 'spam',  # Same type - should fail
             'reason': 'Updated reason',
         }
         
         serializer2 = CreateCommentFlagSerializer(data=second_data, context=context)
+        self.assertTrue(serializer2.is_valid())  # Validation passes
+        
+        # But save() should raise error
+        with self.assertRaises(serializers.ValidationError) as cm:
+            serializer2.save()
+        
+        self.assertIn('already flagged', str(cm.exception).lower())
+
+    def test_different_flag_types_create_separate_flags(self):
+        """Test that user can create multiple flags with different types."""
+        # Create first flag
+        first_data = {'flag_type': 'spam', 'reason': 'Spam content'}
+        context = self.get_context(self.moderator)
+        serializer1 = CreateCommentFlagSerializer(data=first_data, context=context)
+        self.assertTrue(serializer1.is_valid())
+        flag1 = serializer1.save()
+        
+        # Create second flag with DIFFERENT type - should succeed
+        second_data = {'flag_type': 'harassment', 'reason': 'Harassing language'}
+        serializer2 = CreateCommentFlagSerializer(data=second_data, context=context)
         self.assertTrue(serializer2.is_valid())
         flag2 = serializer2.save()
         
-        self.assertEqual(flag1.pk, flag2.pk)
-        self.assertEqual(flag2.reason, 'Updated reason')
+        # Should be two separate flags
+        self.assertNotEqual(flag1.pk, flag2.pk)
+        self.assertEqual(flag1.flag, 'spam')
         self.assertEqual(flag2.flag, 'harassment')
 
 

@@ -859,3 +859,298 @@ class ManagerEdgeCaseTests(BaseCommentTestCase):
         # Empty search should return empty or all results depending on implementation
         # Both are acceptable - just shouldn't crash
         self.assertIsNotNone(qs)
+
+    # ============================================================================
+# COMMENT QUERYSET TESTS - Visibility Filtering
+# ============================================================================
+
+class CommentQuerySetVisibilityTests(BaseCommentTestCase):
+    """Test CommentQuerySet visibility filtering methods."""
+    
+    def test_visible_to_user_anonymous_sees_only_public(self):
+        """Test anonymous users only see public, non-removed comments."""
+        from django.contrib.auth.models import AnonymousUser
+        
+        # Create various comment states
+        public_comment = self.create_comment(is_public=True, is_removed=False)
+        private_comment = self.create_comment(is_public=False, is_removed=False)
+        removed_comment = self.create_comment(is_public=True, is_removed=True)
+        private_removed = self.create_comment(is_public=False, is_removed=True)
+        
+        # Anonymous user
+        anonymous = AnonymousUser()
+        visible = Comment.objects.visible_to_user(anonymous)
+        
+        # Should only see public, non-removed
+        self.assertIn(public_comment, visible)
+        self.assertNotIn(private_comment, visible)
+        self.assertNotIn(removed_comment, visible)
+        self.assertNotIn(private_removed, visible)
+    
+    def test_visible_to_user_authenticated_sees_public_plus_own(self):
+        """Test authenticated users see public comments + their own."""
+        # User's comments in various states
+        my_public = self.create_comment(user=self.regular_user, is_public=True, is_removed=False)
+        my_private = self.create_comment(user=self.regular_user, is_public=False, is_removed=False)
+        my_removed = self.create_comment(user=self.regular_user, is_public=True, is_removed=True)
+        my_private_removed = self.create_comment(user=self.regular_user, is_public=False, is_removed=True)
+        
+        # Another user's comments
+        other_public = self.create_comment(user=self.another_user, is_public=True, is_removed=False)
+        other_private = self.create_comment(user=self.another_user, is_public=False, is_removed=False)
+        other_removed = self.create_comment(user=self.another_user, is_public=True, is_removed=True)
+        
+        visible = Comment.objects.visible_to_user(self.regular_user)
+        
+        # Should see all their own comments
+        self.assertIn(my_public, visible)
+        self.assertIn(my_private, visible)
+        self.assertIn(my_removed, visible)
+        self.assertIn(my_private_removed, visible)
+        
+        # Should see other's public, non-removed only
+        self.assertIn(other_public, visible)
+        self.assertNotIn(other_private, visible)
+        self.assertNotIn(other_removed, visible)
+    
+    def test_visible_to_user_staff_sees_everything(self):
+        """Test staff users see all comments regardless of state."""
+        # Create comments in all states
+        public = self.create_comment(is_public=True, is_removed=False)
+        private = self.create_comment(is_public=False, is_removed=False)
+        removed = self.create_comment(is_public=True, is_removed=True)
+        private_removed = self.create_comment(is_public=False, is_removed=True)
+        
+        visible = Comment.objects.visible_to_user(self.staff_user)
+        
+        # Staff should see everything
+        self.assertIn(public, visible)
+        self.assertIn(private, visible)
+        self.assertIn(removed, visible)
+        self.assertIn(private_removed, visible)
+        self.assertEqual(visible.count(), Comment.objects.count())
+    
+    def test_visible_to_user_superuser_sees_everything(self):
+        """Test superusers see all comments regardless of state."""
+        # Create comments in all states
+        public = self.create_comment(is_public=True, is_removed=False)
+        private = self.create_comment(is_public=False, is_removed=False)
+        removed = self.create_comment(is_public=True, is_removed=True)
+        
+        visible = Comment.objects.visible_to_user(self.admin_user)
+        
+        # Superuser should see everything
+        self.assertIn(public, visible)
+        self.assertIn(private, visible)
+        self.assertIn(removed, visible)
+        self.assertEqual(visible.count(), Comment.objects.count())
+    
+    def test_visible_to_user_with_empty_queryset(self):
+        """Test visible_to_user works on empty queryset."""
+        from django.contrib.auth.models import AnonymousUser
+        
+        # No comments exist
+        visible = Comment.objects.visible_to_user(AnonymousUser())
+        
+        self.assertEqual(visible.count(), 0)
+    
+    def test_visible_to_user_chainable_with_other_filters(self):
+        """Test visible_to_user can be chained with other filters."""
+        comment1 = self.create_comment(
+            user=self.regular_user,
+            content='Python',
+            is_public=True,
+            is_removed=False
+        )
+        comment2 = self.create_comment(
+            user=self.regular_user,
+            content='Django',
+            is_public=True,
+            is_removed=False
+        )
+        comment3 = self.create_comment(
+            user=self.another_user,
+            content='Python',
+            is_public=True,
+            is_removed=False
+        )
+        removed = self.create_comment(
+            user=self.regular_user,
+            content='Python',
+            is_public=True,
+            is_removed=True
+        )
+        
+        # Chain with content filter and user visibility
+        visible = Comment.objects.filter(
+            content__icontains='Python'
+        ).visible_to_user(self.another_user)
+        
+        # Should see public Python comments only
+        self.assertIn(comment1, visible)
+        self.assertIn(comment3, visible)
+        self.assertNotIn(comment2, visible)  # Django, not Python
+        self.assertNotIn(removed, visible)   # Removed
+    
+    def test_visible_to_user_user_sees_own_removed_for_transparency(self):
+        """Test users can see their own removed comments for transparency."""
+        my_removed = self.create_comment(
+            user=self.regular_user,
+            is_public=False,
+            is_removed=True,
+            content='My removed comment'
+        )
+        
+        visible = Comment.objects.visible_to_user(self.regular_user)
+        
+        # Should be able to see own removed comment
+        self.assertIn(my_removed, visible)
+    
+    def test_visible_to_user_with_none_user(self):
+        """Test visible_to_user handles None user gracefully."""
+        public = self.create_comment(is_public=True, is_removed=False)
+        private = self.create_comment(is_public=False, is_removed=False)
+        
+        # None user should behave like anonymous
+        visible = Comment.objects.visible_to_user(None)
+        
+        self.assertIn(public, visible)
+        self.assertNotIn(private, visible)
+
+
+class CommentQuerySetPublicOnlyTests(BaseCommentTestCase):
+    """Test CommentQuerySet public_only method."""
+    
+    def test_public_only_returns_public_non_removed(self):
+        """Test public_only returns only public, non-removed comments."""
+        public = self.create_comment(is_public=True, is_removed=False)
+        private = self.create_comment(is_public=False, is_removed=False)
+        removed = self.create_comment(is_public=True, is_removed=True)
+        private_removed = self.create_comment(is_public=False, is_removed=True)
+        
+        public_comments = Comment.objects.public_only()
+        
+        # Should only include public, non-removed
+        self.assertIn(public, public_comments)
+        self.assertNotIn(private, public_comments)
+        self.assertNotIn(removed, public_comments)
+        self.assertNotIn(private_removed, public_comments)
+        self.assertEqual(public_comments.count(), 1)
+    
+    def test_public_only_filters_out_removed(self):
+        """Test public_only excludes removed comments."""
+        public1 = self.create_comment(is_public=True, is_removed=False)
+        public2 = self.create_comment(is_public=True, is_removed=False)
+        removed = self.create_comment(is_public=True, is_removed=True)
+        
+        public_comments = Comment.objects.public_only()
+        
+        self.assertIn(public1, public_comments)
+        self.assertIn(public2, public_comments)
+        self.assertNotIn(removed, public_comments)
+        self.assertEqual(public_comments.count(), 2)
+    
+    def test_public_only_filters_out_private(self):
+        """Test public_only excludes private comments."""
+        public = self.create_comment(is_public=True, is_removed=False)
+        private1 = self.create_comment(is_public=False, is_removed=False)
+        private2 = self.create_comment(is_public=False, is_removed=False)
+        
+        public_comments = Comment.objects.public_only()
+        
+        self.assertIn(public, public_comments)
+        self.assertNotIn(private1, public_comments)
+        self.assertNotIn(private2, public_comments)
+        self.assertEqual(public_comments.count(), 1)
+    
+    def test_public_only_chainable_with_other_methods(self):
+        """Test public_only can be chained with other queryset methods."""
+        comment1 = self.create_comment(
+            user=self.regular_user,
+            content='First',
+            is_public=True,
+            is_removed=False
+        )
+        comment2 = self.create_comment(
+            user=self.regular_user,
+            content='Second',
+            is_public=True,
+            is_removed=False
+        )
+        private = self.create_comment(
+            user=self.regular_user,
+            content='Private',
+            is_public=False,
+            is_removed=False
+        )
+        
+        # Chain with user filter
+        user_public = Comment.objects.filter(
+            user=self.regular_user
+        ).public_only()
+        
+        self.assertIn(comment1, user_public)
+        self.assertIn(comment2, user_public)
+        self.assertNotIn(private, user_public)
+        self.assertEqual(user_public.count(), 2)
+    
+    def test_public_only_with_empty_queryset(self):
+        """Test public_only works on empty queryset."""
+        public_comments = Comment.objects.public_only()
+        
+        self.assertEqual(public_comments.count(), 0)
+        self.assertQuerysetEqual(public_comments, [])
+    
+    def test_public_only_with_all_states(self):
+        """Test public_only correctly handles all comment states."""
+        # Create one of each state
+        states = [
+            (True, False),   # public, not removed - SHOULD SHOW
+            (True, True),    # public, removed - HIDE
+            (False, False),  # private, not removed - HIDE
+            (False, True),   # private, removed - HIDE
+        ]
+        
+        comments = []
+        for is_public, is_removed in states:
+            comment = self.create_comment(
+                is_public=is_public,
+                is_removed=is_removed,
+                content=f'pub={is_public}, rem={is_removed}'
+            )
+            comments.append(comment)
+        
+        public_comments = Comment.objects.public_only()
+        
+        # Only the first one (public=True, removed=False) should show
+        self.assertEqual(public_comments.count(), 1)
+        self.assertIn(comments[0], public_comments)
+    
+    def test_public_only_optimizable(self):
+        """Test public_only can be combined with optimizations."""
+        comment = self.create_comment(is_public=True, is_removed=False)
+        
+        # Combine with optimization methods
+        optimized = Comment.objects.public_only().optimized_for_list()
+        
+        self.assertIn(comment, optimized)
+        fetched = optimized.first()
+        
+        # Should have annotations from optimized_for_list
+        self.assertTrue(hasattr(fetched, 'flags_count_annotated'))
+        self.assertTrue(hasattr(fetched, 'children_count_annotated'))
+    
+    def test_public_only_consistent_with_visible_to_anonymous(self):
+        """Test public_only returns same results as visible_to_user for anonymous."""
+        from django.contrib.auth.models import AnonymousUser
+        
+        # Create various states
+        self.create_comment(is_public=True, is_removed=False)
+        self.create_comment(is_public=False, is_removed=False)
+        self.create_comment(is_public=True, is_removed=True)
+        
+        public_only_comments = set(Comment.objects.public_only())
+        anonymous_visible = set(Comment.objects.visible_to_user(AnonymousUser()))
+        
+        # Both methods should return the same results for anonymous users
+        self.assertEqual(public_only_comments, anonymous_visible)
