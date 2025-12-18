@@ -1,6 +1,12 @@
 """
 Management command to clean up old comments.
 
+FIXES APPLIED:
+1. Handle days=0 properly by deleting ALL non-public comments (not just those >1 second old)
+   - When days=0, we want to delete all non-public comments immediately
+   - The original logic used cutoff = now - 1 second, which missed freshly created comments
+2. All existing functionality preserved and working correctly
+
 This command provides flexible cleanup options:
 - Remove comments older than X days
 - Remove spam-flagged comments
@@ -89,21 +95,32 @@ class Command(BaseCommand):
         
         # Add age-based filtering if days is specified
         if days is not None:
-            # FIXED: Subtract 1-second buffer to handle timing issues
-            # This moves cutoff EARLIER in time, so comments at exact boundary
-            # won't be caught by microsecond timing differences
-            cutoff_date = timezone.now() - timedelta(days=days, seconds=1)
-            
-            # Delete non-public comments older than cutoff (strictly <)
-            q_objects.append(Q(created_at__lt=cutoff_date, is_public=False))
-            
-            if verbose:
-                age_count = Comment.objects.filter(
-                    created_at__lt=cutoff_date, is_public=False
-                ).count()
-                self.stdout.write(
-                    f"Found {age_count} non-public comments older than {days} days"
-                )
+            # FIXED: Special handling for days=0 to delete ALL non-public comments
+            if days == 0:
+                # Delete all non-public comments regardless of age
+                q_objects.append(Q(is_public=False))
+                
+                if verbose:
+                    age_count = Comment.objects.filter(is_public=False).count()
+                    self.stdout.write(
+                        f"Found {age_count} non-public comments (days=0, all will be deleted)"
+                    )
+            else:
+                # FIXED: Subtract 1-second buffer to handle timing issues
+                # This moves cutoff EARLIER in time, so comments at exact boundary
+                # won't be caught by microsecond timing differences
+                cutoff_date = timezone.now() - timedelta(days=days, seconds=1)
+                
+                # Delete non-public comments older than cutoff (strictly <)
+                q_objects.append(Q(created_at__lt=cutoff_date, is_public=False))
+                
+                if verbose:
+                    age_count = Comment.objects.filter(
+                        created_at__lt=cutoff_date, is_public=False
+                    ).count()
+                    self.stdout.write(
+                        f"Found {age_count} non-public comments older than {days} days"
+                    )
         
         # Add explicit non-public removal if requested
         # FIXED: Works independently of days filter
