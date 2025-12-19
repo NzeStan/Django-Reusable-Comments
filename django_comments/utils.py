@@ -21,6 +21,7 @@ User = get_user_model()
 
 logger = logging.getLogger(comments_settings.LOGGER_NAME)
 
+    
 
 def get_comment_model():
     """
@@ -229,7 +230,12 @@ def filter_profanity(content: str) -> str:
 
 def is_comment_content_allowed(content: str) -> tuple[bool, Optional[str]]:
     """
-    Check if comment content is allowed (not spam, not profane, etc.)
+    FIXED: Check if comment content is allowed (not spam, not profane, etc.)
+    
+    NEW BEHAVIOR:
+    - 'flag' action → Allow creation (True)
+    - 'hide' action → Allow creation (True) - will be hidden in create()
+    - 'delete' action → Reject creation (False)
     
     Returns:
         tuple: (is_allowed: bool, reason: Optional[str])
@@ -243,34 +249,48 @@ def is_comment_content_allowed(content: str) -> tuple[bool, Optional[str]]:
         is_spam, spam_reason = check_content_for_spam(content)
         if is_spam:
             action = comments_settings.SPAM_ACTION
-            if action in ['hide', 'delete']:
+            if action == 'delete':  # CHANGED: Only 'delete' rejects
                 return False, f"Content flagged as spam: {spam_reason}"
-            # If action is 'flag', we allow it but mark for flagging
+            # If action is 'flag' or 'hide', we allow it (will be handled in create())
 
     # Check for profanity
     if comments_settings.PROFANITY_FILTERING:
         has_profanity = check_content_for_profanity(content)
         if has_profanity:
             action = comments_settings.PROFANITY_ACTION
-            if action in ['hide', 'delete']:
-                return False, f"Content contains profanity"
-            
+            if action == 'delete':  # CHANGED: Only 'delete' rejects
+                return False, "Content contains profanity"
+            # If action is 'censor', 'flag', or 'hide', we allow it
 
     return True, None
 
 
+
 def process_comment_content(content: str) -> tuple[str, dict]:
     """
-    Process comment content for spam and profanity.
+    FIXED: Process comment content for spam and profanity.
     
     This is called during comment creation to:
     1. Filter profanity (if action is 'censor')
     2. Determine flags to apply (if action is 'flag')
+    3. Determine if should hide (if action is 'hide') ← NEW
+    
+    NEW: Returns 'should_hide' and 'hide_reason' metadata for 'hide' actions.
     
     Returns:
         tuple: (processed_content: str, flags_to_apply: dict)
                flags_to_apply contains metadata about detected issues
+               
+    flags_to_apply keys:
+        - is_spam: bool
+        - has_profanity: bool
+        - auto_flag_spam: bool
+        - auto_flag_profanity: bool
+        - spam_reason: str
+        - should_hide: bool (NEW)
+        - hide_reason: str (NEW)
     """
+    
     processed_content = content
     flags_to_apply = {
         'is_spam': False,
@@ -278,19 +298,33 @@ def process_comment_content(content: str) -> tuple[str, dict]:
         'auto_flag_spam': False,
         'auto_flag_profanity': False,
         'spam_reason': None,
+        'should_hide': False,  # NEW
+        'hide_reason': None,   # NEW
     }
     
+    # =========================================================================
     # Check spam
+    # =========================================================================
     if comments_settings.SPAM_DETECTION_ENABLED:
         is_spam, spam_reason = check_content_for_spam(content)
         if is_spam:
             flags_to_apply['is_spam'] = True
             flags_to_apply['spam_reason'] = spam_reason
-            if comments_settings.SPAM_ACTION == 'flag':
+            
+            action = comments_settings.SPAM_ACTION
+            if action == 'flag':
                 flags_to_apply['auto_flag_spam'] = True
                 logger.info(f"Content will be auto-flagged as spam: {spam_reason}")
+            elif action == 'hide':  # NEW
+                flags_to_apply['should_hide'] = True
+                flags_to_apply['hide_reason'] = f"Auto-hidden: spam detected - {spam_reason}"
+                flags_to_apply['auto_flag_spam'] = True  # Also flag it
+                logger.info(f"Content will be hidden: {spam_reason}")
+            # 'delete' action is handled by is_comment_content_allowed()
     
+    # =========================================================================
     # Check and process profanity
+    # =========================================================================
     if comments_settings.PROFANITY_FILTERING:
         has_profanity = check_content_for_profanity(content)
         if has_profanity:
@@ -303,6 +337,16 @@ def process_comment_content(content: str) -> tuple[str, dict]:
             elif action == 'flag':
                 flags_to_apply['auto_flag_profanity'] = True
                 logger.info("Content will be auto-flagged for profanity")
+            elif action == 'hide':  # NEW
+                flags_to_apply['should_hide'] = True
+                # Don't overwrite spam reason if already set
+                if not flags_to_apply['hide_reason']:
+                    flags_to_apply['hide_reason'] = "Auto-hidden: profanity detected"
+                else:
+                    flags_to_apply['hide_reason'] += " and profanity detected"
+                flags_to_apply['auto_flag_profanity'] = True  # Also flag it
+                logger.info("Content will be hidden due to profanity")
+            # 'delete' action is handled by is_comment_content_allowed()
     
     return processed_content, flags_to_apply
 

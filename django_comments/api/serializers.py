@@ -3,13 +3,16 @@ from django.contrib.contenttypes.models import ContentType
 from django.utils.translation import gettext_lazy as _
 from rest_framework import serializers
 from ..conf import comments_settings
-from ..models import CommentFlag, BannedUser, CommentRevision, ModerationAction
+from ..models import CommentFlag, BannedUser, CommentRevision, ModerationAction, Comment
 from ..utils import (
     get_comment_model,
     get_model_from_content_type_string,
     is_comment_content_allowed,
     process_comment_content,
     apply_automatic_flags,
+    log_moderation_action,
+    get_or_create_system_user,
+    process_comment_content,
 )
 from ..formatting import render_comment_content 
 from django.contrib.auth import get_user_model
@@ -27,7 +30,7 @@ class UserSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = ('id', 'username', 'display_name')
+        fields = ('id', 'username', 'email', 'display_name')
         read_only_fields = fields
 
     def get_display_name(self, obj) -> str:
@@ -133,24 +136,6 @@ class RecursiveCommentSerializer(serializers.Serializer):
         
         serializer = CommentSerializer(value, context=context)
         return serializer.data
-
-
-from rest_framework import serializers
-from django.contrib.contenttypes.models import ContentType
-from django.utils.translation import gettext_lazy as _
-from django.contrib.auth import get_user_model
-
-from django_comments.models import Comment, CommentFlag, CommentRevision, ModerationAction
-from django_comments.utils import (
-    get_model_from_content_type_string,
-    process_comment_content,
-    apply_automatic_flags,
-    is_comment_content_allowed,
-)
-from django_comments.formatting import render_comment_content
-from django_comments.conf import comments_settings
-
-User = get_user_model()
 
 
 class CommentSerializer(serializers.ModelSerializer):
@@ -575,9 +560,22 @@ class CommentSerializer(serializers.ModelSerializer):
     
     def create(self, validated_data):
         """
-        Create a new comment with content processing.
-        Processes content for profanity and applies auto-flags.
+        FIXED: Create a new comment with content processing.
+        
+        NEW BEHAVIOR:
+        - Processes content for spam/profanity
+        - If 'hide' action: saves with is_public=False and logs moderation
+        - If 'flag' action: saves normally and auto-flags
+        - If 'delete' action: rejected in validation (never reaches here)
+        
+        Args:
+            validated_data: Validated comment data
+        
+        Returns:
+            Comment: Created comment instance
         """
+        
+        
         # Extract content_type and object_id
         content_type_str = validated_data.pop('content_type')
         object_id = validated_data.pop('object_id')
@@ -594,6 +592,12 @@ class CommentSerializer(serializers.ModelSerializer):
         if processed_content != original_content:
             validated_data['content'] = processed_content
         
+        # =========================================================================
+        # NEW: Handle 'hide' action - set is_public=False
+        # =========================================================================
+        if flags_to_apply.get('should_hide'):
+            validated_data['is_public'] = False
+        
         # Create the comment
         comment = Comment.objects.create(
             content_type=content_type,
@@ -601,11 +605,28 @@ class CommentSerializer(serializers.ModelSerializer):
             **validated_data
         )
         
+        # =========================================================================
+        # NEW: Log moderation action for auto-hidden comments
+        # =========================================================================
+        if flags_to_apply.get('should_hide'):
+            system_user = get_or_create_system_user()
+            hide_reason = flags_to_apply.get('hide_reason', 'Auto-hidden by system')
+            
+            log_moderation_action(
+                comment=comment,
+                moderator=system_user,
+                action='rejected',  # Use 'rejected' action for hidden comments
+                reason=hide_reason
+            )
+        
+        # =========================================================================
         # Apply automatic flags if needed
+        # =========================================================================
         if flags_to_apply.get('auto_flag_spam') or flags_to_apply.get('auto_flag_profanity'):
             apply_automatic_flags(comment)
         
         return comment
+
     
     def update(self, instance, validated_data):
         """
