@@ -259,15 +259,32 @@ class CommentSerializer(serializers.ModelSerializer):
             return obj.content
 
     def get_content_object_info(self, obj):
-        """Get information about the commented object."""
-        if not obj.content_object:
-            return None
-            
-        return {
+        """
+        Get information about the commented object.
+        
+        FIXED: Always returns content_type and object_id info, even if the
+        actual object has been deleted (content_object is None).
+        """
+        # Always return at minimum the content_type and object_id
+        info = {
             'content_type': f"{obj.content_type.app_label}.{obj.content_type.model}",
             'object_id': str(obj.object_id),
-            'object_repr': str(obj.content_object),
         }
+        
+        # Try to get the actual object representation
+        try:
+            if obj.content_object:
+                info['object_repr'] = str(obj.content_object)
+                info['exists'] = True
+            else:
+                info['object_repr'] = '(deleted)'
+                info['exists'] = False
+        except Exception:
+            # If there's any error accessing content_object
+            info['object_repr'] = '(unavailable)'
+            info['exists'] = False
+        
+        return info
     
     def get_user_info(self, obj):
         """
@@ -285,7 +302,8 @@ class CommentSerializer(serializers.ModelSerializer):
     def get_children(self, obj):
         """
         Get nested children comments using RecursiveCommentSerializer.
-    
+        
+        NOTE: Make sure you have RecursiveCommentSerializer defined in your serializers.py
         """
         if hasattr(obj, 'children'):
             children = obj.children.all()
@@ -301,6 +319,8 @@ class CommentSerializer(serializers.ModelSerializer):
     
     def get_flags_count(self, obj) -> int:
         """
+        FIXED: Get flag count with proper UUID handling and fallback.
+        
         Tries to use the annotated value from optimized_for_list(),
         falls back to direct query with proper UUID conversion if not available.
         """
@@ -493,7 +513,7 @@ class CommentSerializer(serializers.ModelSerializer):
         # Check if user is banned
         if user.is_authenticated:
             from django_comments.models import BannedUser
-            if BannedUser.objects.is_user_banned(user):
+            if BannedUser.is_user_banned(user):  # FIXED: It's a class method, not manager method
                 raise serializers.ValidationError(
                     _("You are currently banned from commenting")
                 )
@@ -574,7 +594,6 @@ class CommentSerializer(serializers.ModelSerializer):
         
         # Use the default update behavior for remaining fields
         return super().update(instance, validated_data)
-    
 
 class BannedUserSerializer(serializers.ModelSerializer):
     """
