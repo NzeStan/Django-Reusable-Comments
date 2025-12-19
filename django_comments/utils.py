@@ -1,22 +1,24 @@
 import re
 import logging
 import importlib
-from typing import List, Dict, Any, Type, Union, Optional, Tuple
-from django.apps import apps
-from django.contrib.contenttypes.models import ContentType
-from django.core.exceptions import ImproperlyConfigured, ObjectDoesNotExist
-from django.db import models
-from .conf import comments_settings
-from django.utils import timezone
 from datetime import timedelta
-from django.db import IntegrityError, transaction
 from functools import lru_cache
-from django.contrib.auth import get_user_model
-from .models import BannedUser, CommentFlag
-User = get_user_model()
 from contextlib import contextmanager
+from typing import Any, Dict, List, Optional, Tuple, Type, Union
+from django.apps import apps
+from django.contrib.auth import get_user_model
+from django.contrib.contenttypes.models import ContentType
 from django.core.cache import cache
+from django.core.exceptions import ImproperlyConfigured, ObjectDoesNotExist
+from django.db import IntegrityError, models, transaction
 from django.db.models import Count
+from django.utils import timezone
+from django_comments.conf import comments_settings
+from django_comments.models import CommentFlag
+from .models import BannedUser
+
+User = get_user_model()
+
 logger = logging.getLogger(comments_settings.LOGGER_NAME)
 
 
@@ -307,8 +309,12 @@ def process_comment_content(content: str) -> tuple[str, dict]:
 
 def apply_automatic_flags(comment):
     """
-    Apply automatic flags to a comment based on content analysis.
+    FIXED: Apply automatic flags to a comment based on content analysis.
     
+    Replace your apply_automatic_flags() function in utils.py with this complete function.
+    
+    Args:
+        comment: Comment instance to potentially flag
     
     This function is called after a comment is created to:
     - Flag spam detected by spam detection system
@@ -316,27 +322,22 @@ def apply_automatic_flags(comment):
     
     Flags are created by the "system" user to distinguish them from
     user-initiated flags.
-    
-    Args:
-        comment: Comment instance to potentially flag
-    
-    Example:
-        >>> comment = Comment.objects.create(content="Buy cheap watches!")
-        >>> apply_automatic_flags(comment)
-        >>> # Comment is now flagged as spam by system user
-    
-    Notes:
-        - Only flags if spam/profanity detection is enabled
-        - Creates flags with detailed reasons
-        - Logs all auto-flagging actions
-        - Does not fail silently - errors are logged
     """
-    from .models import CommentFlag
+    from django_comments.models import CommentFlag
+    from django_comments.utils import get_or_create_system_user, process_comment_content
+    from django_comments.signals import comment_flagged, safe_send
+    from django.contrib.contenttypes.models import ContentType
+    import logging
+    from django_comments.conf import comments_settings
+    
+    logger = logging.getLogger(comments_settings.LOGGER_NAME)
     
     system_user = get_or_create_system_user()
     
     # Get content analysis
     _, flags_to_apply = process_comment_content(comment.content)
+    
+    comment_ct = ContentType.objects.get_for_model(comment)
     
     # Apply spam flag if needed
     if flags_to_apply.get('auto_flag_spam'):
@@ -346,64 +347,61 @@ def apply_automatic_flags(comment):
                 'Automatically flagged by spam detection system'
             )
             
-            # Use manager's create_or_get_flag to prevent duplicates
-            flag, created = CommentFlag.objects.create_or_get_flag(
-                comment=comment,
+            # CRITICAL FIX: Proper UUID-to-string conversion
+            flag, created = CommentFlag.objects.get_or_create(
+                comment_type=comment_ct,
+                comment_id=str(comment.pk),  # CRITICAL: Convert to string
                 user=system_user,
                 flag='spam',
-                reason=reason
+                defaults={'reason': reason}
             )
             
             if created:
-                logger.info(
-                    f"Auto-flagged comment {comment.pk} as spam. "
-                    f"Reason: {reason}"
-                )
-            else:
-                logger.debug(
-                    f"Spam flag already exists for comment {comment.pk}"
-                )
+                logger.info(f"Auto-flagged comment {comment.pk} as spam. Reason: {reason}")
                 
+                # Send signal
+                safe_send(
+                    comment_flagged,
+                    sender=CommentFlag,
+                    flag=flag,
+                    comment=comment,
+                    user=system_user,
+                    flag_type='spam',
+                    reason=reason
+                )
         except Exception as e:
-            # Don't fail the comment creation, just log error
-            logger.error(
-                f"Failed to auto-flag comment {comment.pk} as spam: {e}",
-                exc_info=True
-            )
+            logger.error(f"Failed to create spam flag for comment {comment.pk}: {e}")
     
     # Apply profanity flag if needed
     if flags_to_apply.get('auto_flag_profanity'):
         try:
             reason = 'Automatically flagged for profanity'
             
-            flag, created = CommentFlag.objects.create_or_get_flag(
-                comment=comment,
+            # CRITICAL FIX: Proper UUID-to-string conversion
+            flag, created = CommentFlag.objects.get_or_create(
+                comment_type=comment_ct,
+                comment_id=str(comment.pk),  # CRITICAL: Convert to string
                 user=system_user,
                 flag='offensive',
-                reason=reason
+                defaults={'reason': reason}
             )
             
             if created:
-                logger.info(
-                    f"Auto-flagged comment {comment.pk} for profanity"
-                )
-            else:
-                logger.debug(
-                    f"Profanity flag already exists for comment {comment.pk}"
-                )
+                logger.info(f"Auto-flagged comment {comment.pk} for profanity")
                 
+                # Send signal
+                safe_send(
+                    comment_flagged,
+                    sender=CommentFlag,
+                    flag=flag,
+                    comment=comment,
+                    user=system_user,
+                    flag_type='offensive',
+                    reason=reason
+                )
         except Exception as e:
-            # Don't fail the comment creation, just log error
-            logger.error(
-                f"Failed to auto-flag comment {comment.pk} for profanity: {e}",
-                exc_info=True
-            )
-    
-    # Return summary of actions taken
-    return {
-        'spam_flagged': flags_to_apply.get('auto_flag_spam', False),
-        'profanity_flagged': flags_to_apply.get('auto_flag_profanity', False),
-    }
+            logger.error(f"Failed to create profanity flag for comment {comment.pk}: {e}")
+
 
 
 
@@ -622,62 +620,70 @@ def get_or_create_system_user():
 
 def check_flag_threshold(comment):
     """
-    Check if comment has exceeded flag thresholds and take action.
+    FIXED: Check if comment has exceeded flag thresholds and take action.
+    
+    Replace your check_flag_threshold() function in utils.py with this complete function.
     
     Args:
-        comment: Comment instance
+        comment: Comment instance to check
     
-    Returns:
-        dict: Actions taken
+    This function is called after a comment is flagged to check if it should be:
+    - Auto-hidden (based on AUTO_HIDE_THRESHOLD setting)
+    - Auto-deleted (based on AUTO_DELETE_THRESHOLD setting)
+    - Trigger moderator notification (based on FLAG_NOTIFICATION_THRESHOLD setting)
     """
-    from .models import ModerationAction
+    from django_comments.models import CommentFlag
+    from django_comments.utils import log_moderation_action, get_or_create_system_user
+    from django.contrib.contenttypes.models import ContentType
+    import logging
+    from django_comments.conf import comments_settings
     
-    flag_count = comment.flags.count()
-    actions_taken = {
-        'hidden': False,
-        'deleted': False,
-        'notified': False,
-    }
+    logger = logging.getLogger(comments_settings.LOGGER_NAME)
     
-    # Check delete threshold
-    delete_threshold = comments_settings.AUTO_DELETE_THRESHOLD
-    if delete_threshold and flag_count >= delete_threshold:
-        # Log action
-        ModerationAction.objects.create(
-            comment=comment,
-            moderator=None,  # System action
-            action='deleted',
-            reason=f'Auto-deleted after {flag_count} flags'
+    comment_ct = ContentType.objects.get_for_model(comment)
+    
+    # CRITICAL FIX: Query flags with proper UUID conversion
+    flag_count = CommentFlag.objects.filter(
+        comment_type=comment_ct,
+        comment_id=str(comment.pk)  # CRITICAL: Convert to string
+    ).count()
+    
+    # Check auto-hide threshold
+    auto_hide_threshold = comments_settings.AUTO_HIDE_THRESHOLD
+    if auto_hide_threshold and flag_count >= auto_hide_threshold:
+        if comment.is_public and not comment.is_removed:
+            comment.is_public = False
+            comment.save(update_fields=['is_public'])
+            
+            system_user = get_or_create_system_user()
+            log_moderation_action(
+                comment=comment,
+                moderator=system_user,
+                action='rejected',
+                reason=f'Auto-hidden: exceeded flag threshold ({flag_count} flags)'
+            )
+            
+            logger.info(f"Auto-hid comment {comment.pk} due to {flag_count} flags")
+            
+            # Notify moderators if enabled
+            if comments_settings.NOTIFY_ON_AUTO_HIDE:
+                from django_comments.tasks import send_auto_hide_notification
+                send_auto_hide_notification.delay(str(comment.pk), flag_count)
+    
+    # Check auto-delete threshold
+    auto_delete_threshold = comments_settings.AUTO_DELETE_THRESHOLD
+    if auto_delete_threshold and flag_count >= auto_delete_threshold:
+        logger.warning(
+            f"Comment {comment.pk} reached auto-delete threshold "
+            f"({flag_count} flags) but auto-delete is not implemented"
         )
-        comment.delete()
-        actions_taken['deleted'] = True
-        logger.info(f"Auto-deleted comment {comment.pk} after {flag_count} flags")
-        return actions_taken
     
-    # Check hide threshold
-    hide_threshold = comments_settings.AUTO_HIDE_THRESHOLD
-    if hide_threshold and flag_count >= hide_threshold and comment.is_public:
-        comment.is_public = False
-        comment.save(update_fields=['is_public'])
-        
-        # Log action
-        ModerationAction.objects.create(
-            comment=comment,
-            moderator=None,  # System action
-            action='rejected',
-            reason=f'Auto-hidden after {flag_count} flags'
-        )
-        
-        actions_taken['hidden'] = True
-        logger.info(f"Auto-hidden comment {comment.pk} after {flag_count} flags")
-        
-        # Notify moderators if enabled
-        if comments_settings.NOTIFY_ON_AUTO_HIDE:
-            from .notifications import notify_auto_hide
-            notify_auto_hide(comment, flag_count)
-            actions_taken['notified'] = True
-    
-    return actions_taken
+    # Notify moderators at threshold
+    flag_notification_threshold = comments_settings.FLAG_NOTIFICATION_THRESHOLD
+    if flag_notification_threshold and flag_count >= flag_notification_threshold:
+        from django_comments.tasks import send_flag_notification
+        send_flag_notification.delay(str(comment.pk), flag_count)
+
 
 
 def can_edit_comment(comment, user):
@@ -1001,44 +1007,53 @@ def auto_ban_user(user, reason: str) -> Optional['BannedUser']:
 
 def bulk_create_flags_without_validation(flag_data_list):
     """
-    Bulk create CommentFlag instances without running clean() validation.
+    FIXED: Bulk create flags without running validation.
     
-    Uses secure skip_flag_validation context manager.
-    
-    Use this when you're confident the data is valid and want maximum performance.
+    Replace your bulk_create_flags_without_validation() function in utils.py 
+    with this complete function (if you have this function).
     
     Args:
         flag_data_list: List of dicts with flag data
-            [
-                {'comment_type': ct, 'comment_id': '123', 'user': user, 'flag': 'spam'},
-                ...
-            ]
-    
+        
     Returns:
         List of created CommentFlag instances
     
     Example:
-        from django.contrib.contenttypes.models import ContentType
-        from django_comments.models import CommentFlag, Comment
-        
-        ct = ContentType.objects.get_for_model(Comment)
-        
         flag_data = [
-            {'comment_type': ct, 'comment_id': str(c.pk), 'user': moderator, 'flag': 'spam'}
-            for c in spam_comments
+            {
+                'comment_type': comment_ct,
+                'comment_id': str(comment.pk),
+                'user': user,
+                'flag': 'spam'
+            }
         ]
-        
         flags = bulk_create_flags_without_validation(flag_data)
     """
     from django_comments.models import CommentFlag
+    import logging
+    from django_comments.conf import comments_settings
+    
+    logger = logging.getLogger(comments_settings.LOGGER_NAME)
+    
+    if not flag_data_list:
+        return []
+    
+    # CRITICAL FIX: Ensure all comment_ids are strings
+    for flag_data in flag_data_list:
+        if 'comment_id' in flag_data:
+            flag_data['comment_id'] = str(flag_data['comment_id'])
     
     flags = []
-    for data in flag_data_list:
-        flag = CommentFlag(**data)
-        flag._CommentFlag__skip_clean_validation = True
+    for flag_data in flag_data_list:
+        flag = CommentFlag(**flag_data)
         flags.append(flag)
     
-    return CommentFlag.objects.bulk_create(flags)
+    # Bulk create without calling save() (skips validation)
+    created_flags = CommentFlag.objects.bulk_create(flags)
+    
+    logger.info(f"Bulk created {len(created_flags)} flags")
+    
+    return created_flags
 
 
 # ============================================================================

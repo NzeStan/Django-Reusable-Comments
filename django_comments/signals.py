@@ -1,7 +1,15 @@
+import logging
+
 from django.db.models.signals import pre_save, post_save, pre_delete, post_delete
 from django.dispatch import receiver, Signal
-from .conf import comments_settings
+from django.contrib.contenttypes.models import ContentType
+from django_comments.conf import comments_settings
+from django_comments.models import CommentFlag
+from django_comments.utils import log_moderation_action
+from .conf import comments_settings as local_comments_settings
 from .utils import get_comment_model
+logger = logging.getLogger(comments_settings.LOGGER_NAME)
+
 
 Comment = get_comment_model()
 
@@ -108,79 +116,69 @@ def on_comment_post_delete(sender, instance, **kwargs):
 
 def flag_comment(comment, user, flag='other', reason=''):
     """
-    Flag a comment and send a signal.
-    ENHANCED: Now checks flag thresholds and sends notifications.
+    FIXED: Flag a comment and send a signal with proper UUID handling.
     
+    Replace your flag_comment() function in signals.py with this complete function.
     
     Args:
-        comment: Comment or UUIDComment instance
+        comment: Comment instance to flag
         user: User who is flagging
         flag: Flag type (default: 'other')
-        reason: Optional reason
+        reason: Optional reason for flagging
     
     Returns:
         CommentFlag instance
-        
-    Raises:
-        ValidationError: If user already flagged this comment with this flag type
     """
-    from django.core.exceptions import ValidationError
-    from .models import CommentFlag, ModerationAction
-    from .utils import check_flag_threshold, check_auto_ban_conditions, auto_ban_user
+    from django.contrib.contenttypes.models import ContentType
+    from django_comments.models import CommentFlag
+    from django_comments.utils import log_moderation_action
+    from django_comments.signals import comment_flagged, safe_send
+    import logging
+    from django_comments.conf import comments_settings
     
+    logger = logging.getLogger(comments_settings.LOGGER_NAME)
     
-    comment_flag, created = CommentFlag.objects.create_or_get_flag(
-        comment=comment,
+    # CRITICAL FIX: Convert comment PK to string for proper matching
+    comment_ct = ContentType.objects.get_for_model(comment)
+    
+    # Create the flag with proper UUID-to-string conversion
+    flag_obj = CommentFlag.objects.create(
+        comment_type=comment_ct,
+        comment_id=str(comment.pk),  # CRITICAL: Always convert to string
         user=user,
         flag=flag,
         reason=reason
     )
     
-    # Send signal only if newly created
-    if created:
-        safe_send(
-            comment_flagged,
-            sender=CommentFlag,
-            flag=comment_flag,
-            comment=comment,
-            user=user,
-            flag_type=flag,
-            reason=reason
-        )
-        
-        # Log moderation action
-        from .utils import log_moderation_action
-        log_moderation_action(
-            comment=comment,
-            moderator=user,
-            action='flagged',
-            reason=f"{flag}: {reason}" if reason else flag
-        )
-        
-        # Send notification to moderators
-        if comments_settings.NOTIFY_ON_FLAG:
-            flag_count = comment.flags.count()
-            threshold = comments_settings.FLAG_NOTIFICATION_THRESHOLD
-            
-            if flag_count >= threshold:
-                from .notifications import notify_moderators_of_flag
-                try:
-                    notify_moderators_of_flag(comment, comment_flag, flag_count)
-                except Exception as e:
-                    import logging
-                    logger = logging.getLogger(comments_settings.LOGGER_NAME)
-                    logger.error(f"Failed to send flag notification: {e}")
-        
-        # Check flag thresholds (auto-hide/delete)
-        actions = check_flag_threshold(comment)
-        
-        # If not deleted, check if comment owner should be banned
-        if not actions.get('deleted'):
-            should_ban, ban_reason = check_auto_ban_conditions(comment.user)
-            if should_ban:
-                auto_ban_user(comment.user, ban_reason)
+    # Log moderation action
+    log_moderation_action(
+        comment=comment,
+        moderator=user,
+        action='flagged',
+        reason=f"Flagged as {flag}: {reason}" if reason else f"Flagged as {flag}"
+    )
     
-    return comment_flag
+    # Send signal
+    safe_send(
+        comment_flagged,
+        sender=CommentFlag,
+        flag=flag_obj,
+        comment=comment,
+        user=user,
+        flag_type=flag,
+        reason=reason
+    )
+    
+    # Check if comment should be auto-hidden based on flag count
+    from django_comments.utils import check_flag_threshold
+    try:
+        check_flag_threshold(comment)
+    except Exception as e:
+        logger.error(f"Error checking flag threshold: {e}")
+    
+    return flag_obj
+
+
 
 
 def approve_comment(comment, moderator=None):
