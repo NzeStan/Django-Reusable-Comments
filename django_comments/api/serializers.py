@@ -572,10 +572,22 @@ class CommentSerializer(serializers.ModelSerializer):
     
     def create(self, validated_data):
         """
-        FIXED: Create a new comment with content processing.
+        FIXED: Create a new comment with content processing and anonymous user handling.
+        
+        CRITICAL FIX: Convert AnonymousUser to None for anonymous comments.
+        
+        The CurrentUserDefault() serializer default returns AnonymousUser when
+        the request user is not authenticated. However, the Comment model's user
+        field is a ForeignKey that only accepts:
+        - A real User instance (for authenticated comments)
+        - None (for anonymous comments)
+        
+        It CANNOT accept AnonymousUser objects. This fix converts AnonymousUser
+        to None before creating the comment.
         
         NEW BEHAVIOR:
         - Processes content for spam/profanity
+        - Converts AnonymousUser to None for database compatibility
         - If 'hide' action: saves with is_public=False and logs moderation
         - If 'flag' action: saves normally and auto-flags
         - If 'delete' action: rejected in validation (never reaches here)
@@ -586,7 +598,16 @@ class CommentSerializer(serializers.ModelSerializer):
         Returns:
             Comment: Created comment instance
         """
-        
+        from django.contrib.auth.models import AnonymousUser
+        from django.contrib.contenttypes.models import ContentType
+        from django_comments.models import Comment
+        from django_comments.utils import (
+            process_comment_content,
+            get_model_from_content_type_string,
+            log_moderation_action,
+            get_or_create_system_user,
+            apply_automatic_flags
+        )
         
         # Extract content_type and object_id
         content_type_str = validated_data.pop('content_type')
@@ -605,7 +626,17 @@ class CommentSerializer(serializers.ModelSerializer):
             validated_data['content'] = processed_content
         
         # =========================================================================
-        # NEW: Handle 'hide' action - set is_public=False
+        # CRITICAL FIX: Handle AnonymousUser
+        # =========================================================================
+        # CurrentUserDefault() returns AnonymousUser for unauthenticated requests,
+        # but the Comment.user ForeignKey field cannot accept AnonymousUser objects.
+        # Convert AnonymousUser to None for database compatibility.
+        user = validated_data.get('user')
+        if isinstance(user, AnonymousUser):
+            validated_data['user'] = None
+        
+        # =========================================================================
+        # Handle 'hide' action - set is_public=False
         # =========================================================================
         if flags_to_apply.get('should_hide'):
             validated_data['is_public'] = False
@@ -618,7 +649,7 @@ class CommentSerializer(serializers.ModelSerializer):
         )
         
         # =========================================================================
-        # NEW: Log moderation action for auto-hidden comments
+        # Log moderation action for auto-hidden comments
         # =========================================================================
         if flags_to_apply.get('should_hide'):
             system_user = get_or_create_system_user()

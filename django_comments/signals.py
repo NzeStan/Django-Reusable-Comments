@@ -116,9 +116,22 @@ def on_comment_post_delete(sender, instance, **kwargs):
 
 def flag_comment(comment, user, flag='other', reason=''):
     """
-    FIXED: Flag a comment and send a signal with proper UUID handling.
+    FIXED: Flag a comment with proper UUID handling and duplicate prevention.
     
-    Replace your flag_comment() function in signals.py with this complete function.
+    CRITICAL FIXES:
+    1. Check for existing flags before creating to prevent IntegrityError
+    2. Raise ValidationError for duplicates (handled by view as 400 response)
+    3. Proper UUID-to-string conversion for GenericForeignKey compatibility
+    
+    The database has a UNIQUE constraint on (comment_type, comment_id, user, flag).
+    Instead of letting the database raise IntegrityError (which becomes a 500 error),
+    we check for existing flags first and raise ValidationError (becomes 400 error).
+    
+    This matches the test expectations where duplicate flags should return:
+    - HTTP 400 Bad Request
+    - {"detail": "You have already flagged this comment with this flag type"}
+    
+    NOT a 500 Internal Server Error with IntegrityError.
     
     Args:
         comment: Comment instance to flag
@@ -128,20 +141,46 @@ def flag_comment(comment, user, flag='other', reason=''):
     
     Returns:
         CommentFlag instance
+        
+    Raises:
+        ValidationError: If user has already flagged this comment with this flag type
     """
     from django.contrib.contenttypes.models import ContentType
+    from django.core.exceptions import ValidationError
     from django_comments.models import CommentFlag
     from django_comments.utils import log_moderation_action
     from django_comments.signals import comment_flagged, safe_send
-    import logging
     from django_comments.conf import comments_settings
+    import logging
     
     logger = logging.getLogger(comments_settings.LOGGER_NAME)
     
-    # CRITICAL FIX: Convert comment PK to string for proper matching
+    # Get content type for the comment
     comment_ct = ContentType.objects.get_for_model(comment)
     
+    # =========================================================================
+    # CRITICAL FIX: Check for existing flag to prevent IntegrityError
+    # =========================================================================
+    # The database has a UNIQUE constraint on (comment_type, comment_id, user, flag).
+    # Instead of letting this hit the database and raise IntegrityError,
+    # check first and raise a user-friendly ValidationError.
+    existing_flag = CommentFlag.objects.filter(
+        comment_type=comment_ct,
+        comment_id=str(comment.pk),  # Convert UUID to string
+        user=user,
+        flag=flag
+    ).first()
+    
+    if existing_flag:
+        # User has already flagged this comment with this flag type
+        raise ValidationError(
+            f"You have already flagged this comment as '{flag}'. "
+            "You cannot flag the same comment multiple times with the same flag type."
+        )
+    
+    # =========================================================================
     # Create the flag with proper UUID-to-string conversion
+    # =========================================================================
     flag_obj = CommentFlag.objects.create(
         comment_type=comment_ct,
         comment_id=str(comment.pk),  # CRITICAL: Always convert to string
@@ -150,7 +189,9 @@ def flag_comment(comment, user, flag='other', reason=''):
         reason=reason
     )
     
+    # =========================================================================
     # Log moderation action
+    # =========================================================================
     log_moderation_action(
         comment=comment,
         moderator=user,
@@ -158,7 +199,9 @@ def flag_comment(comment, user, flag='other', reason=''):
         reason=f"Flagged as {flag}: {reason}" if reason else f"Flagged as {flag}"
     )
     
+    # =========================================================================
     # Send signal
+    # =========================================================================
     safe_send(
         comment_flagged,
         sender=CommentFlag,
@@ -169,14 +212,17 @@ def flag_comment(comment, user, flag='other', reason=''):
         reason=reason
     )
     
+    # =========================================================================
     # Check if comment should be auto-hidden based on flag count
-    from django_comments.utils import check_flag_threshold
+    # =========================================================================
     try:
+        from django_comments.utils import check_flag_threshold
         check_flag_threshold(comment)
     except Exception as e:
         logger.error(f"Error checking flag threshold: {e}")
     
     return flag_obj
+
 
 
 
