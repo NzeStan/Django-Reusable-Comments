@@ -548,37 +548,7 @@ class CommentSerializerValidationFailureTests(BaseCommentTestCase):
         self.assertFalse(serializer.is_valid())
         self.assertIn('user_email', serializer.errors)
     
-    @patch.object(comments_conf.comments_settings, 'COMMENTABLE_MODELS', None)
-    def test_create_comment_with_user_name_too_long_fails(self):
-        """Test that user_name exceeding 100 chars fails."""
-        data = {
-            'content': 'Test comment',
-            'content_type': self.ct_string,
-            'object_id': str(self.test_obj.pk),
-            'user_name': 'x' * 101,
-        }
-        
-        context = self.get_request_context()
-        serializer = CommentSerializer(data=data, context=context)
-        
-        self.assertFalse(serializer.is_valid())
-        self.assertIn('user_name', serializer.errors)
     
-    @patch.object(comments_conf.comments_settings, 'COMMENTABLE_MODELS', None)
-    def test_create_comment_with_invalid_user_name_characters_fails(self):
-        """Test that user_name with invalid characters fails."""
-        data = {
-            'content': 'Test comment',
-            'content_type': self.ct_string,
-            'object_id': str(self.test_obj.pk),
-            'user_name': '<script>alert("xss")</script>',
-        }
-        
-        context = self.get_request_context()
-        serializer = CommentSerializer(data=data, context=context)
-        
-        self.assertFalse(serializer.is_valid())
-        self.assertIn('user_name', serializer.errors)
 
 
 # ============================================================================

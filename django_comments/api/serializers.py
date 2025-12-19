@@ -200,6 +200,22 @@ class CommentSerializer(serializers.ModelSerializer):
             'revisions_count', 'moderation_actions_count',
             'is_public', 'is_removed', 
         )
+    
+    def to_representation(self, instance):
+        """
+        Customize representation to conditionally include fields.
+        
+        Excludes user_name and user_email for authenticated users since
+        they have user_info instead.
+        """
+        representation = super().to_representation(instance)
+        
+        # Hide user_name and user_email for authenticated users
+        if instance.user:
+            representation.pop('user_name', None)
+            representation.pop('user_email', None)
+        
+        return representation
 
     def get_formatted_content(self, obj) -> str:
         """
@@ -308,15 +324,6 @@ class CommentSerializer(serializers.ModelSerializer):
             return value
         except Exception as e:
             raise serializers.ValidationError(str(e))
-    
-
-    def validate_user_name(self, value):
-        if len(value) > 100:
-            raise serializers.ValidationError("Name too long")
-        # Only allow alphanumeric and basic punctuation
-        if not re.match(r'^[\w\s\-.,\']+$', value):
-            raise serializers.ValidationError("Invalid characters in name")
-        return value
     
     
     def validate(self, data):

@@ -4,43 +4,46 @@ Load in templates with: {% load comment_tags %}
 """
 from django import template
 from django.contrib.contenttypes.models import ContentType
-from django.utils.safestring import mark_safe
+from django.utils.safestring import mark_safe, SafeString
 from ..cache import get_comment_count_for_object
 from ..utils import get_comment_model
 from ..formatting import render_comment_content  
+
 register = template.Library()
 Comment = get_comment_model()
 
 
-@register.simple_tag
-def get_comment_count(obj, public_only=True):
-    """
-    Get comment count for an object (uses caching).
-    
-    Usage in template:
-        {% get_comment_count post %}
-        {% get_comment_count post public_only=False %}
-    """
-    try:
-        return get_comment_count_for_object(obj, public_only=public_only)
-    except Exception:
-        return 0
+# ============================================================================
+# PUBLIC FUNCTIONS (can be called from Python code or used in template tags)
+# ============================================================================
 
-
-@register.simple_tag(takes_context=True)
-def get_comments_for(context, obj, include_private=False):
+def get_comments_for(obj, public_only=True, user=None):
     """
     Get all comments for an object.
+    Can be called directly from Python or used in templates via template tag.
     
     Args:
-        context: Template context (for request.user)
         obj: Object to get comments for
-        include_private: If True, use user permissions (default: False, public only)
+        public_only: If True, only return public comments. If False:
+            - With user: Apply visibility filters based on user permissions
+            - Without user: Return ALL comments (no filtering)
+        user: User object for permission checking (when public_only=False)
     
-    Usage:
-        {% get_comments_for post as comments %}  {# Public only #}
-        {% get_comments_for post include_private=True as comments %}  {# Respects permissions #}
+    Returns:
+        QuerySet of Comment objects
+    
+    Examples:
+        # From Python code
+        comments = get_comments_for(post)  # Public only
+        comments = get_comments_for(post, public_only=False)  # ALL comments
+        comments = get_comments_for(post, public_only=False, user=request.user)  # Visible to user
+        
+        # From template (via template tag)
+        {% get_comments_for post as comments %}
     """
+    if obj is None:
+        return Comment.objects.none()
+    
     try:
         ct = ContentType.objects.get_for_model(obj)
         queryset = Comment.objects.filter(
@@ -48,35 +51,41 @@ def get_comments_for(context, obj, include_private=False):
             object_id=obj.pk
         ).optimized_for_list()
         
-        if include_private:
-            # Respect user permissions
-            request = context.get('request')
-            if request and hasattr(request, 'user'):
-                queryset = queryset.visible_to_user(request.user)
-            else:
-                queryset = queryset.public_only()
-        else:
+        if public_only:
             # Explicitly public only
             queryset = queryset.public_only()
+        elif user is not None:
+            # Apply user-based visibility filters
+            queryset = queryset.visible_to_user(user)
+        # else: public_only=False and no user -> return ALL comments (no filtering)
         
         return queryset.order_by('-created_at')
     except Exception:
         return Comment.objects.none()
 
-@register.simple_tag
+
 def get_root_comments_for(obj, public_only=True):
     """
     Get root comments (no parent) for an object.
+    Can be called directly from Python or used in templates via template tag.
     
-    Usage in template:
+    Args:
+        obj: Object to get comments for
+        public_only: If True, only return public comments
+    
+    Returns:
+        QuerySet of root Comment objects (no parent)
+    
+    Examples:
+        # From Python code
+        root_comments = get_root_comments_for(post)
+        
+        # From template (via template tag)
         {% get_root_comments_for post as root_comments %}
-        {% for comment in root_comments %}
-            {{ comment.content }}
-            {% for child in comment.children.all %}
-                {{ child.content }}
-            {% endfor %}
-        {% endfor %}
     """
+    if obj is None:
+        return Comment.objects.none()
+    
     try:
         ct = ContentType.objects.get_for_model(obj)
         queryset = Comment.objects.filter(
@@ -93,6 +102,92 @@ def get_root_comments_for(obj, public_only=True):
         return Comment.objects.none()
 
 
+# ============================================================================
+# TEMPLATE TAGS - SIMPLE TAGS
+# ============================================================================
+
+@register.simple_tag
+def get_comment_count(obj, public_only=True):
+    """
+    Get comment count for an object (uses caching).
+    
+    Usage in template:
+        {% get_comment_count post %}
+        {% get_comment_count post public_only=False %}
+    """
+    try:
+        return get_comment_count_for_object(obj, public_only=public_only)
+    except Exception:
+        return 0
+
+
+@register.simple_tag(takes_context=True, name='get_comments_for')
+def get_comments_for_tag(context, obj, include_private=False):
+    """
+    Template tag version of get_comments_for.
+    
+    Args:
+        context: Template context (for request.user)
+        obj: Object to get comments for
+        include_private: If True, use user permissions (default: False, public only)
+    
+    Usage:
+        {% get_comments_for post as comments %}  {# Public only #}
+        {% get_comments_for post include_private=True as comments %}  {# Respects permissions #}
+    """
+    public_only = not include_private
+    user = None
+    
+    if include_private:
+        request = context.get('request')
+        if request and hasattr(request, 'user'):
+            user = request.user
+    
+    return get_comments_for(obj, public_only=public_only, user=user)
+
+
+@register.simple_tag(name='get_root_comments_for')
+def get_root_comments_for_tag(obj, public_only=True):
+    """
+    Template tag version of get_root_comments_for.
+    
+    Usage in template:
+        {% get_root_comments_for post as root_comments %}
+        {% for comment in root_comments %}
+            {{ comment.content }}
+            {% for child in comment.children.all %}
+                {{ child.content }}
+            {% endfor %}
+        {% endfor %}
+    """
+    return get_root_comments_for(obj, public_only=public_only)
+
+
+@register.simple_tag(takes_context=True)
+def get_user_comment_count(context, user=None):
+    """
+    Get comment count for a user (uses current user if not specified).
+    
+    Usage in template:
+        {% get_user_comment_count %}
+        {% get_user_comment_count user=some_user %}
+    """
+    if user is None:
+        user = context.get('user')
+    
+    if not user or user.is_anonymous:
+        return 0
+    
+    try:
+        return Comment.objects.filter(user=user).count()
+    except Exception:
+        return 0
+
+
+# ============================================================================
+# TEMPLATE FILTERS
+# ============================================================================
+
 @register.filter
 def has_comments(obj):
     """
@@ -107,6 +202,7 @@ def has_comments(obj):
         return get_comment_count_for_object(obj, public_only=True) > 0
     except Exception:
         return False
+
 
 @register.filter(name='format_comment')
 def format_comment(content, format_type=None):
@@ -135,6 +231,9 @@ def format_comment(content, format_type=None):
             {{ comment.content|format_comment:"markdown" }}
         </div>
     """
+    if content is None:
+        content = ""
+    
     try:
         return mark_safe(render_comment_content(content, format=format_type))
     except Exception as e:
@@ -145,7 +244,7 @@ def format_comment(content, format_type=None):
         
         logger = logging.getLogger(comments_settings.LOGGER_NAME)
         logger.error(f"Failed to format comment content: {e}")
-        return mark_safe(escape(content))
+        return mark_safe(escape(str(content)))
 
 
 @register.filter(name='format_comment_plain')
@@ -186,6 +285,10 @@ def format_comment_html(content):
     return format_comment(content, format_type='html')
 
 
+# ============================================================================
+# INCLUSION TAGS
+# ============================================================================
+
 @register.inclusion_tag('django_comments/comment_count.html')
 def show_comment_count(obj, link=True):
     """
@@ -216,6 +319,7 @@ def show_comments(obj, max_comments=None):
     
     Requires template: django_comments/comment_list.html
     """
+    # Use the public function directly
     comments = get_comments_for(obj, public_only=True)
     
     if max_comments:
@@ -225,24 +329,3 @@ def show_comments(obj, max_comments=None):
         'comments': comments,
         'object': obj,
     }
-
-
-@register.simple_tag(takes_context=True)
-def get_user_comment_count(context, user=None):
-    """
-    Get comment count for a user (uses current user if not specified).
-    
-    Usage in template:
-        {% get_user_comment_count %}
-        {% get_user_comment_count user=some_user %}
-    """
-    if user is None:
-        user = context.get('user')
-    
-    if not user or user.is_anonymous:
-        return 0
-    
-    try:
-        return Comment.objects.filter(user=user).count()
-    except Exception:
-        return 0

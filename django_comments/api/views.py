@@ -198,7 +198,7 @@ class CommentViewSet(viewsets.ModelViewSet):
         Reduces N+1 queries dramatically.
         """
         from django.db import models
-        from .models import CommentFlag
+        from django_comments.models import CommentFlag  # FIXED: Was from .models import CommentFlag
         
         # Optimize foreign key access
         queryset = queryset.select_related(
@@ -217,6 +217,7 @@ class CommentViewSet(viewsets.ModelViewSet):
         )
         
         # Prefetch children with proper visibility filtering
+        from django_comments.models import Comment
         children_queryset = Comment.objects.select_related('user').visible_to_user(
             self.request.user
         ).order_by('created_at')
@@ -235,6 +236,7 @@ class CommentViewSet(viewsets.ModelViewSet):
         )
         
         return queryset
+
     
     def _apply_visibility_filters(self, queryset):
         """
