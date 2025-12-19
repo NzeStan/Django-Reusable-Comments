@@ -471,12 +471,16 @@ class CommentSerializer(serializers.ModelSerializer):
         """
         Validate the comment data.
         
+        SECURITY & MODERATION HANDLING:
         This method orchestrates the validation flow:
-        1. Clean security fields
+        1. Get request and user from context
         2. Skip validation for partial updates
-        3. Handle anonymous vs authenticated comments
-        4. Check if user is banned
-        5. Validate content and object existence
+        3. Clean security-sensitive fields (is_public, is_removed)
+        4. Determine moderation status for new comments
+        5. Validate content
+        6. Handle anonymous vs authenticated comments
+        7. Check if user is banned
+        8. Validate required fields for creation
         """
         # Get the request from context
         request = self.context.get('request')
@@ -489,6 +493,35 @@ class CommentSerializer(serializers.ModelSerializer):
         if self.partial:
             return data
         
+        # =====================================================================
+        # SECURITY: Remove user-provided is_public and is_removed
+        # These fields must be server-controlled, not user-controlled
+        # =====================================================================
+        data.pop('is_public', None)
+        data.pop('is_removed', None)
+        
+        # =====================================================================
+        # MODERATION: Determine is_public for NEW comments only
+        # =====================================================================
+        if not self.instance:  # Creating new comment
+            from django_comments.utils import should_auto_approve_user
+            
+            if comments_settings.MODERATOR_REQUIRED:
+                # Check if user should bypass moderation
+                if should_auto_approve_user(user):
+                    data['is_public'] = True
+                else:
+                    data['is_public'] = False
+            else:
+                # No moderation required - all comments are public by default
+                data['is_public'] = True
+            
+            # Always False for new comments (only moderators can set this)
+            data['is_removed'] = False
+        
+        # =====================================================================
+        # CONTENT VALIDATION
+        # =====================================================================
         # Ensure we have content
         content = data.get('content', '').strip()
         if not content:
@@ -496,6 +529,9 @@ class CommentSerializer(serializers.ModelSerializer):
                 'content': _("Comment content cannot be empty")
             })
         
+        # =====================================================================
+        # ANONYMOUS vs AUTHENTICATED USER HANDLING
+        # =====================================================================
         # For authenticated users, clear anonymous fields
         if user.is_authenticated:
             data.pop('user_name', None)
@@ -510,14 +546,20 @@ class CommentSerializer(serializers.ModelSerializer):
                     'user_name': _("Anonymous comments must provide either a name or email")
                 })
         
+        # =====================================================================
+        # BAN CHECKING
+        # =====================================================================
         # Check if user is banned
         if user.is_authenticated:
             from django_comments.models import BannedUser
-            if BannedUser.is_user_banned(user):  # FIXED: It's a class method, not manager method
+            if BannedUser.is_user_banned(user):
                 raise serializers.ValidationError(
                     _("You are currently banned from commenting")
                 )
         
+        # =====================================================================
+        # REQUIRED FIELDS FOR CREATION
+        # =====================================================================
         # Validate that content_type and object_id are provided for creation
         if not self.instance:  # Creating new comment
             if 'content_type' not in data:

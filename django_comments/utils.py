@@ -521,6 +521,12 @@ def should_auto_approve_user(user):
     """
     Check if user should bypass moderation.
     
+    A user bypasses moderation if they meet ANY of these criteria:
+    1. Staff or superuser
+    2. Member of AUTO_APPROVE_GROUPS (e.g., 'Moderators', 'Staff')
+    3. Member of TRUSTED_USER_GROUPS (e.g., 'Verified', 'Premium')
+    4. Has N or more approved comments (AUTO_APPROVE_AFTER_N_APPROVED)
+    
     Args:
         user: User instance
     
@@ -534,7 +540,14 @@ def should_auto_approve_user(user):
     if user.is_staff or user.is_superuser:
         return True
     
-    # Check trusted groups
+    # Check AUTO_APPROVE_GROUPS (for moderators and staff groups)
+    auto_approve_groups = comments_settings.AUTO_APPROVE_GROUPS
+    if auto_approve_groups:
+        user_groups = set(user.groups.values_list('name', flat=True))
+        if user_groups & set(auto_approve_groups):
+            return True
+    
+    # Check TRUSTED_USER_GROUPS (for verified/premium users)
     trusted_groups = comments_settings.TRUSTED_USER_GROUPS
     if trusted_groups:
         user_groups = set(user.groups.values_list('name', flat=True))
@@ -555,6 +568,7 @@ def should_auto_approve_user(user):
             return True
     
     return False
+
 
 def get_or_create_system_user():
     """
