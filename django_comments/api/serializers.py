@@ -25,16 +25,28 @@ User = get_user_model()
 class UserSerializer(serializers.ModelSerializer):
     """
     Serializer for the User model, used within CommentSerializer.
+    Includes role information for frontend badge display.
     """
     display_name = serializers.SerializerMethodField()
+    is_moderator = serializers.SerializerMethodField()
 
     class Meta:
         model = User
-        fields = ('id', 'username', 'email', 'display_name')
+        fields = (
+            'id', 'username', 'email', 'display_name',
+            'is_staff', 'is_superuser', 'is_moderator'
+        )
         read_only_fields = fields
 
     def get_display_name(self, obj) -> str:
         return obj.get_full_name() or obj.get_username()
+    
+    def get_is_moderator(self, obj) -> bool:
+        """
+        Check if user has moderator permissions.
+        Returns True if user has can_moderate_comments permission.
+        """
+        return obj.has_perm('django_comments.can_moderate_comments')
 
 
 class ContentTypeSerializer(serializers.ModelSerializer):
