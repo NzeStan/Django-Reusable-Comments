@@ -533,6 +533,7 @@ class CommentViewSetCreateTests(APIViewTestCase):
         self.assertIn(response.status_code, [status.HTTP_403_FORBIDDEN, status.HTTP_400_BAD_REQUEST])
     
     @patch.object(comments_conf.comments_settings, 'COMMENTABLE_MODELS', None)
+    @patch.object(comments_conf.comments_settings, 'MODERATOR_REQUIRED', True)
     def test_create_comment_user_cannot_override_is_public(self):
         """Test user cannot force is_public=True when moderation required."""
         self.client.force_authenticate(user=self.regular_user)
@@ -544,11 +545,9 @@ class CommentViewSetCreateTests(APIViewTestCase):
             'is_public': True,  # Try to override
         }
         
-        with patch.object(comments_conf.comments_settings, 'MODERATOR_REQUIRED', True):
-            response = self.client.post(self.url, data, format='json')
+        response = self.client.post(self.url, data, format='json')
         
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        # Check the database - should be False regardless of user input
         comment = Comment.objects.get(content='Test comment')
         self.assertFalse(comment.is_public)
 
@@ -1613,6 +1612,8 @@ class ViewSetEdgeCaseTests(APIViewTestCase):
         self.assertEqual(response1.status_code, status.HTTP_201_CREATED)
         self.assertEqual(response2.status_code, status.HTTP_400_BAD_REQUEST)
     
+    @patch.object(comments_conf.comments_settings, 'COMMENTABLE_MODELS', None)
+    @patch.object(comments_conf.comments_settings, 'MAX_COMMENT_LENGTH', 5000)
     def test_comment_with_very_long_unicode_content(self):
         """Test comment with long Unicode content."""
         self.client.force_authenticate(user=self.regular_user)
@@ -1620,15 +1621,14 @@ class ViewSetEdgeCaseTests(APIViewTestCase):
         # Create very long Unicode string
         long_unicode = '测试内容 ' * 100 + '🚀' * 50
         
-        with patch.object(comments_conf.comments_settings, 'MAX_COMMENT_LENGTH', 5000):
-            with patch.object(comments_conf.comments_settings, 'COMMENTABLE_MODELS', None):
-                data = {
-                    'content': long_unicode,
-                    'content_type': f'{self.test_obj._meta.app_label}.{self.test_obj._meta.model_name}',
-                    'object_id': str(self.test_obj.pk),
-                }
-                response = self.client.post(reverse('django_comments_api:comment-list'), 
-                                          data, format='json')
+        data = {
+            'content': long_unicode,
+            'content_type': f'{self.test_obj._meta.app_label}.{self.test_obj._meta.model_name}',
+            'object_id': str(self.test_obj.pk),
+        }
+        
+        url = reverse('django_comments_api:comment-list')
+        response = self.client.post(url, data, format='json')
         
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
     
