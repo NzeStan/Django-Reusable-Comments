@@ -3,7 +3,7 @@ from django.contrib.contenttypes.models import ContentType
 from django.utils.html import format_html
 from django.utils.translation import gettext_lazy as _
 from django.urls import reverse
-from django.db.models import Count, Prefetch, Q
+from django.db.models import Count, Q
 from django import forms
 from django.utils import timezone
 from .models import (
@@ -14,7 +14,7 @@ from .models import (
     CommentRevision
 )
 from .utils import get_comment_model
-from .signals import approve_comment, reject_comment
+from django_comments.signals import approve_comment, reject_comment
 from .notifications import notify_user_unbanned
 
 
@@ -387,22 +387,59 @@ class CommentAdmin(admin.ModelAdmin):
     
     # Admin actions
     def approve_comments(self, request, queryset):
-        """Approve selected comments."""
-        updated = queryset.update(is_public=True)
-        self.message_user(
-            request, 
-            _("Successfully approved %(count)d comment(s).") % {'count': updated}
-        )
+        """
+        Approve selected comments.
+        Calls approve_comment() for each comment to trigger signals and logging.
+        """
+        count = 0
+        for comment in queryset:
+            try:
+                approve_comment(comment, moderator=request.user)
+                count += 1
+            except Exception as e:
+                self.message_user(
+                    request,
+                    _("Error approving comment %(id)s: %(error)s") % {
+                        'id': comment.pk,
+                        'error': str(e)
+                    },
+                    level='error'
+                )
+        
+        if count > 0:
+            self.message_user(
+                request, 
+                _("Successfully approved %(count)d comment(s).") % {'count': count}
+            )
     approve_comments.short_description = _("Approve selected comments")
     
     def reject_comments(self, request, queryset):
-        """Reject selected comments."""
-        updated = queryset.update(is_public=False)
-        self.message_user(
-            request, 
-            _("Successfully rejected %(count)d comment(s).") % {'count': updated}
-        )
+        """
+        Reject selected comments.
+        Calls reject_comment() for each comment to trigger signals and logging.
+        """
+        count = 0
+        for comment in queryset:
+            try:
+                reject_comment(comment, moderator=request.user)
+                count += 1
+            except Exception as e:
+                self.message_user(
+                    request,
+                    _("Error rejecting comment %(id)s: %(error)s") % {
+                        'id': comment.pk,
+                        'error': str(e)
+                    },
+                    level='error'
+                )
+        
+        if count > 0:
+            self.message_user(
+                request, 
+                _("Successfully rejected %(count)d comment(s).") % {'count': count}
+            )
     reject_comments.short_description = _("Reject selected comments")
+
     
     def mark_as_removed(self, request, queryset):
         """Mark selected comments as removed."""
