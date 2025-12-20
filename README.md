@@ -1,71 +1,137 @@
 # Django Reusable Comments
 
-A **production-grade**, feature-complete Django app for adding comment functionality to any model. Built with performance optimization, extensive customization options, email notifications, content formatting, spam detection, and full REST API support.
+A **production-grade**, feature-complete Django app for adding sophisticated comment functionality to any model. Built with performance optimization, extensive customization options, email notifications, content formatting, spam detection, GDPR compliance, and full REST API support.
 
 [![Python](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![Django](https://img.shields.io/badge/django-3.2+-green.svg)](https://www.djangoproject.com/)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Tests](https://img.shields.io/badge/tests-280%2B%20passing-brightgreen.svg)]()
 
 ## ⚡ What's New in v1.0
 
-- 📧 **Email Notifications** - 5 notification types with beautiful HTML templates
-- 🎨 **Content Formatting** - Plain text, Markdown, and HTML support with XSS protection
-- 🛡️ **Advanced Spam Detection** - Custom ML-ready spam detector callbacks
-- ⏱️ **Rate Limiting** - 3-tier DRF throttling (user/anon/burst protection)
+- 📧 **8 Email Notification Types** - Beautiful HTML templates with async Celery support
+- 🎨 **Content Formatting** - Plain text, Markdown, and HTML with XSS protection
+- 🛡️ **Advanced Spam Detection** - ML-ready with custom detector callbacks
+- ⏱️ **3-Tier Rate Limiting** - DRF integration with user/anon/burst protection
 - 📄 **Smart Pagination** - Thread-aware pagination for nested comments
-- 🔒 **Enhanced Security** - XSS protection, sanitization, profanity filtering
-- ⚙️ **Complete Configuration** - 30+ settings, all fully functional
+- 🔒 **Enhanced Security** - XSS protection, HTML sanitization, profanity filtering
+- 🤖 **Auto-Moderation** - Threshold-based auto-hide, auto-delete, auto-ban
+- 🚫 **Ban System** - Auto-ban after spam flags or rejections, temporary/permanent bans
+- ✏️ **Comment Editing** - Time-windowed editing with full revision history
+- ⚖️ **GDPR Compliance** - Data export, deletion, anonymization, retention policies
+- ⚙️ **60+ Settings** - Complete configurability for every aspect
+
+---
 
 ## 🚀 Features
 
 ### Core Features
 - ✅ **Model Agnostic** - Add comments to any Django model
 - ✅ **ID Flexibility** - Support for both UUID and integer primary keys
-- ✅ **Threaded Comments** - Nested replies with configurable depth
-- ✅ **Performance Optimized** - Advanced caching and query optimization
-- ✅ **REST API** - Complete DRF integration with filtering and search
-- ✅ **Admin Interface** - Feature-rich admin with optimized queries
+- ✅ **Threaded Comments** - Nested replies with configurable depth limits
+- ✅ **Performance Optimized** - Advanced caching, query optimization, select_related
+- ✅ **REST API** - Complete DRF integration with filtering, search, ordering
+- ✅ **Admin Interface** - Feature-rich admin with bulk actions and optimized queries
 
-### New Features (v1.0)
-- 📧 **Email Notifications**
-  - New comment notifications
-  - Reply notifications
-  - Approval/rejection notifications
-  - Moderator alerts
-  - Beautiful HTML templates
+### Content & Formatting
+- 🎨 **Multiple Formats**
+  - Plain text (HTML escaped - safest)
+  - Markdown (with CommonMark extensions)
+  - HTML (sanitized with bleach)
+- 🔒 **XSS Protection** - Automatic HTML sanitization
+- 📝 **Profanity Filtering** - Censor, flag, hide, or delete
+- ✏️ **Comment Editing** - Configurable time windows
+- 📜 **Edit History** - Complete revision tracking
 
-- 🎨 **Content Formatting**
-  - Plain text (HTML escaped)
-  - Markdown (with extensions)
-  - HTML (sanitized)
-  - XSS protection
+### Spam & Content Control
+- 🛡️ **Spam Detection**
+  - Word-based detection
+  - Custom ML detector callbacks
+  - Configurable actions (flag/hide/delete)
+- 🚨 **Auto-Moderation**
+  - Auto-hide after N flags
+  - Auto-delete after N flags
+  - Auto-ban spammers
+- 🚫 **Flag System**
+  - Spam, inappropriate, harassment flags
+  - Abuse prevention (rate limits)
+  - Moderator notifications
 
-- 🛡️ **Spam & Content Control**
-  - Custom spam detector callbacks
-  - ML-ready architecture
-  - Word-based spam detection
-  - Profanity filtering
-  - Automatic flagging
+### Moderation & Workflows
+- 👮 **Moderation Queue**
+  - Approve/reject workflow
+  - Group-based permissions
+  - Auto-approval for trusted users
+- 🔨 **Ban System**
+  - Auto-ban after rejections/spam flags
+  - Temporary or permanent bans
+  - Ban notifications
+- 📊 **Moderation Logs**
+  - Complete audit trail
+  - 90-day default retention
+  - All actions logged
 
-- ⏱️ **API Rate Limiting**
-  - User rate limiting (100/day default)
-  - Anonymous rate limiting (20/day default)
-  - Burst protection (5/min default)
-  - DRF integration
+### Notifications
+- 📧 **8 Notification Types**
+  1. New comment notifications
+  2. Reply notifications
+  3. Approval notifications
+  4. Rejection notifications
+  5. Moderator alerts (non-public comments)
+  6. User ban notifications
+  7. User unban notifications
+  8. Flag threshold notifications
 
-- 📄 **Smart Pagination**
+- ⚡ **Async Support**
+  - Celery integration (optional)
+  - Graceful fallback to sync
+  - Beautiful HTML email templates
+
+### API Features
+- ⏱️ **Rate Limiting**
+  - User limits (default: 100/day)
+  - Anonymous limits (default: 20/day)
+  - Burst protection (default: 5/min)
+  - DRF throttling integration
+
+- 📄 **Pagination**
   - Standard pagination
   - Thread-aware pagination
   - Configurable page sizes
-  - Client control
+  - Client-controlled page size
 
-### Additional Features
+- 🔍 **Advanced Filtering**
+  - Filter by user, content object, public status
+  - Full-text search
+  - Date range filtering
+  - Custom ordering
+
+### GDPR Compliance
+- ⚖️ **Data Subject Rights**
+  - Right to data portability (export)
+  - Right to erasure (deletion)
+  - Right to be forgotten (anonymization)
+  
+- 🔐 **Privacy Controls**
+  - Optional IP address collection
+  - Optional user agent collection
+  - Auto-anonymize on user deletion
+  - Retention policy automation
+
+- 📋 **Data Management**
+  - Export all user data as JSON
+  - Anonymize old comments automatically
+  - Management commands for compliance
+
+### Developer Experience
 - ✅ **Signals** - Robust signal system for extending functionality
-- ✅ **Internationalization** - Full i18n support using gettext_lazy
-- ✅ **Template Tags** - Convenient template tags with caching support
-- ✅ **Testing** - Comprehensive test suite (280+ tests)
-- ✅ **Documentation** - Thorough documentation for developers
-- ✅ **Logging & Error Handling** - Sophisticated error handling
+- 🌍 **Internationalization** - Full i18n support using gettext_lazy
+- 🏷️ **Template Tags** - Convenient template tags with caching
+- 🧪 **Testing** - Comprehensive test suite (280+ tests)
+- 📚 **Documentation** - Thorough documentation for developers
+- 🪵 **Logging** - Sophisticated error handling and logging
+
+---
 
 ## 📦 Installation
 
@@ -77,11 +143,14 @@ pip install django-reusable-comments
 
 # Install optional dependencies
 pip install markdown bleach  # For formatting support
+pip install celery  # For async notifications (optional)
 ```
 
 ### Add to INSTALLED_APPS
 
 ```python
+# settings.py
+
 INSTALLED_APPS = [
     # Django apps
     'django.contrib.admin',
@@ -90,7 +159,7 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    'django.contrib.sites',  # Required for emails
+    'django.contrib.sites',  # Required for email notifications
     
     # Third-party apps
     'rest_framework',
@@ -125,7 +194,23 @@ urlpatterns = [
 ]
 ```
 
+---
+
 ## ⚙️ Configuration
+
+### Minimal Configuration
+
+```python
+# settings.py
+
+DJANGO_COMMENTS_CONFIG = {
+    # Required: Specify which models can receive comments
+    'COMMENTABLE_MODELS': [
+        'blog.Post',
+        'products.Product',
+    ],
+}
+```
 
 ### Basic Configuration
 
@@ -134,2015 +219,812 @@ urlpatterns = [
 
 DJANGO_COMMENTS_CONFIG = {
     # Models that can receive comments
-    'COMMENTABLE_MODELS': [
-        'blog.Post',
-        'products.Product',
-    ],
+    'COMMENTABLE_MODELS': ['blog.Post', 'products.Product'],
     
     # Enable features
     'SEND_NOTIFICATIONS': True,
     'COMMENT_FORMAT': 'markdown',  # 'plain', 'markdown', or 'html'
-    'ALLOW_ANONYMOUS': True,
+    'ALLOW_ANONYMOUS': False,
     
     # Moderation
-    'MODERATOR_REQUIRED': False,
+    'MODERATOR_REQUIRED': True,
+    'AUTO_APPROVE_GROUPS': ['Moderators', 'Staff'],
+    'AUTO_APPROVE_AFTER_N_APPROVED': 5,
+    
+    # Threading
     'MAX_COMMENT_DEPTH': 3,
     
-    # Rate limiting (requires DRF)
+    # API Rate Limiting
     'API_RATE_LIMIT': '100/day',
     'API_RATE_LIMIT_ANON': '20/day',
     'API_RATE_LIMIT_BURST': '5/min',
-    
-    # Pagination
-    'PAGE_SIZE': 20,
-    'MAX_PAGE_SIZE': 100,
 }
 ```
 
-### Email Configuration
+### Production Configuration
 
 ```python
-# Email backend
+# settings.py
+
+DJANGO_COMMENTS_CONFIG = {
+    # Models
+    'COMMENTABLE_MODELS': ['blog.Post', 'products.Product', 'news.Article'],
+    
+    # Content
+    'MAX_COMMENT_LENGTH': 3000,
+    'ALLOW_ANONYMOUS': False,
+    'COMMENT_FORMAT': 'markdown',
+    'MAX_COMMENT_DEPTH': 3,
+    
+    # Moderation
+    'MODERATOR_REQUIRED': True,
+    'AUTO_APPROVE_GROUPS': ['Moderators', 'Staff'],
+    'AUTO_APPROVE_AFTER_N_APPROVED': 5,
+    'TRUSTED_USER_GROUPS': ['Premium', 'Verified'],
+    
+    # Spam Detection
+    'SPAM_DETECTION_ENABLED': True,
+    'SPAM_DETECTOR': 'myapp.ml.detect_spam',  # Custom ML detector
+    'SPAM_ACTION': 'flag',
+    
+    # Profanity Filtering
+    'PROFANITY_FILTERING': True,
+    'PROFANITY_LIST': ['badword1', 'badword2'],
+    'PROFANITY_ACTION': 'censor',
+    
+    # Auto-Moderation
+    'AUTO_HIDE_THRESHOLD': 3,
+    'AUTO_DELETE_THRESHOLD': 10,
+    'FLAG_NOTIFICATION_THRESHOLD': 1,
+    'AUTO_HIDE_DETECTED_SPAM': True,
+    
+    # Ban System
+    'AUTO_BAN_AFTER_REJECTIONS': 5,
+    'AUTO_BAN_AFTER_SPAM_FLAGS': 3,
+    'DEFAULT_BAN_DURATION_DAYS': 30,
+    
+    # Notifications
+    'SEND_NOTIFICATIONS': True,
+    'USE_ASYNC_NOTIFICATIONS': True,  # Requires Celery
+    'NOTIFY_ON_FLAG': True,
+    'NOTIFY_ON_AUTO_HIDE': True,
+    
+    # API
+    'API_RATE_LIMIT': '100/day',
+    'API_RATE_LIMIT_ANON': '20/day',
+    'API_RATE_LIMIT_BURST': '5/min',
+    'PAGE_SIZE': 20,
+    'MAX_PAGE_SIZE': 100,
+    
+    # Editing
+    'ALLOW_COMMENT_EDITING': True,
+    'EDIT_TIME_WINDOW': 3600,  # 1 hour
+    'TRACK_EDIT_HISTORY': True,
+    
+    # GDPR
+    'GDPR_ENABLED': True,
+    'GDPR_ALLOW_USER_DATA_EXPORT': True,
+    'GDPR_ALLOW_USER_DATA_DELETION': True,
+    'GDPR_ANONYMIZE_ON_USER_DELETE': True,
+    'GDPR_ENABLE_RETENTION_POLICY': True,
+    'GDPR_RETENTION_DAYS': 365,
+    
+    # Caching
+    'CACHE_TIMEOUT': 3600,
+    
+    # Logging
+    'LOGGER_NAME': 'django_comments',
+}
+```
+
+For complete configuration reference, see [CONFIGURATION_GUIDE.md](CONFIGURATION_GUIDE.md).
+
+---
+
+## 📧 Email Notifications
+
+### Setup
+
+```python
+# settings.py
+
+DJANGO_COMMENTS_CONFIG = {
+    'SEND_NOTIFICATIONS': True,
+    'DEFAULT_FROM_EMAIL': 'noreply@yourdomain.com',
+    'COMMENT_NOTIFICATION_EMAILS': ['moderators@yourdomain.com'],
+}
+
+# Configure Django email backend
 EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
 EMAIL_HOST = 'smtp.gmail.com'
 EMAIL_PORT = 587
 EMAIL_USE_TLS = True
 EMAIL_HOST_USER = 'your-email@gmail.com'
-EMAIL_HOST_PASSWORD = 'your-app-password'
-DEFAULT_FROM_EMAIL = 'noreply@yoursite.com'
-
-# Site configuration (for email links)
-SITE_ID = 1
-
-# Create site object
-from django.contrib.sites.models import Site
-Site.objects.get_or_create(
-    id=1,
-    defaults={'domain': 'yoursite.com', 'name': 'Your Site'}
-)
+EMAIL_HOST_PASSWORD = 'your-password'
 ```
 
-### Email Templates
-
-Create these templates in `templates/django_comments/email/`:
-
-```
-templates/
-└── django_comments/
-    └── email/
-        ├── new_comment.html
-        ├── comment_reply.html
-        ├── comment_approved.html
-        ├── comment_rejected.html
-        └── moderator_notification.html
-```
-
-**Download templates here:** [Email Templates Package](#email-templates)
-
-### Advanced Configuration
+### Async Notifications with Celery
 
 ```python
-DJANGO_COMMENTS_CONFIG = {
-    # ============================================================================
-    # CORE SETTINGS
-    # ============================================================================
-    'COMMENTABLE_MODELS': ['blog.Post', 'products.Product'],
-    'USE_UUIDS': False,  # Set to True for UUID primary keys
-    
-    # ============================================================================
-    # EMAIL NOTIFICATIONS
-    # ============================================================================
-    'SEND_NOTIFICATIONS': True,
-    'NOTIFICATION_SUBJECT': '[{site_name}] New comment on {object}',
-    'NOTIFICATION_EMAIL_TEMPLATE': 'django_comments/email/new_comment.html',
-    'NOTIFICATION_REPLY_TEMPLATE': 'django_comments/email/comment_reply.html',
-    'NOTIFICATION_APPROVED_TEMPLATE': 'django_comments/email/comment_approved.html',
-    'NOTIFICATION_REJECTED_TEMPLATE': 'django_comments/email/comment_rejected.html',
-    'NOTIFICATION_MODERATOR_TEMPLATE': 'django_comments/email/moderator_notification.html',
-    
-    # ============================================================================
-    # CONTENT FORMATTING
-    # ============================================================================
-    'COMMENT_FORMAT': 'markdown',  # 'plain', 'markdown', or 'html'
-    
-    # ============================================================================
-    # MODERATION
-    # ============================================================================
-    'MODERATOR_REQUIRED': False,
-    'AUTO_APPROVE_GROUPS': ['Moderators', 'Staff'],
-    'CAN_VIEW_NON_PUBLIC_COMMENTS': ['Moderators', 'Staff'],
-    
-    # ============================================================================
-    # THREADING
-    # ============================================================================
-    'MAX_COMMENT_DEPTH': 3,  # None = unlimited
-    
-    # ============================================================================
-    # CONTENT LIMITS
-    # ============================================================================
-    'MAX_COMMENT_LENGTH': 3000,
-    'ALLOW_ANONYMOUS': True,
-    
-    # ============================================================================
-    # API SETTINGS
-    # ============================================================================
-    'API_RATE_LIMIT': '100/day',
-    'API_RATE_LIMIT_ANON': '20/day',
-    'API_RATE_LIMIT_BURST': '5/min',
-    'PAGE_SIZE': 20,
-    'PAGE_SIZE_QUERY_PARAM': 'page_size',
-    'MAX_PAGE_SIZE': 100,
-    
-    # ============================================================================
-    # SORTING & DISPLAY
-    # ============================================================================
-    'DEFAULT_SORT': '-created_at',
-    'ALLOWED_SORTS': ['-created_at', 'created_at', '-updated_at', 'updated_at'],
-    
-    # ============================================================================
-    # SPAM DETECTION
-    # ============================================================================
-    'SPAM_DETECTION_ENABLED': True,
-    'SPAM_WORDS': ['viagra', 'casino', 'lottery'],
-    'SPAM_ACTION': 'flag',  # 'flag', 'hide', or 'delete'
-    'SPAM_DETECTOR': None,  # Custom callable: 'myapp.spam.detect_spam'
-    
-    # ============================================================================
-    # PROFANITY FILTERING
-    # ============================================================================
-    'PROFANITY_FILTERING': True,
-    'PROFANITY_LIST': ['badword1', 'badword2'],
-    'PROFANITY_ACTION': 'censor',  # 'censor', 'flag', 'hide', or 'delete'
-    
-    # ============================================================================
-    # CLEANUP
-    # ============================================================================
-    'CLEANUP_AFTER_DAYS': 90,  # Remove old non-public comments
-    
-    # ============================================================================
-    # CACHING
-    # ============================================================================
-    'CACHE_TIMEOUT': 3600,  # 1 hour
-    
-    # ============================================================================
-    # LOGGING
-    # ============================================================================
-    'LOGGER_NAME': 'django_comments',
-}
-```
+# settings.py
 
-## 📧 Email Notifications
-
-### Notification Types
-
-1. **New Comment** - Sent to content owner when someone comments
-2. **Reply** - Sent to parent comment author when someone replies
-3. **Approval** - Sent to comment author when comment is approved
-4. **Rejection** - Sent to comment author when comment is rejected
-5. **Moderator Alert** - Sent to moderators when comment needs review
-
-### Enable Notifications
-
-```python
 DJANGO_COMMENTS_CONFIG = {
     'SEND_NOTIFICATIONS': True,
+    'USE_ASYNC_NOTIFICATIONS': True,
 }
 
-# Configure email backend
-EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
-# ... (see Email Configuration above)
+# Celery configuration
+CELERY_BROKER_URL = 'redis://localhost:6379/0'
+CELERY_RESULT_BACKEND = 'redis://localhost:6379/0'
 ```
 
-### Async Email (Recommended for Production)
-
-```python
-# Using Celery (recommended)
-from celery import shared_task
-from django_comments.notifications import notify_new_comment
-
-@shared_task
-def send_comment_notification(comment_id):
-    from django_comments.models import Comment
-    comment = Comment.objects.get(pk=comment_id)
-    notify_new_comment(comment)
-```
-
-## 🎨 Content Formatting
-
-### Plain Text (Default)
+### Custom Email Templates
 
 ```python
 DJANGO_COMMENTS_CONFIG = {
-    'COMMENT_FORMAT': 'plain',
+    'NOTIFICATION_EMAIL_TEMPLATE': 'myapp/emails/new_comment.html',
+    'NOTIFICATION_REPLY_TEMPLATE': 'myapp/emails/comment_reply.html',
+    'NOTIFICATION_APPROVED_TEMPLATE': 'myapp/emails/approved.html',
+    'NOTIFICATION_REJECTED_TEMPLATE': 'myapp/emails/rejected.html',
+    'NOTIFICATION_MODERATOR_TEMPLATE': 'myapp/emails/moderator_alert.html',
+    'NOTIFICATION_USER_BAN_TEMPLATE': 'myapp/emails/banned.html',
+    'NOTIFICATION_USER_UNBAN_TEMPLATE': 'myapp/emails/unbanned.html',
+    'NOTIFICATION_FLAG_TEMPLATE': 'myapp/emails/flag_alert.html',
 }
 ```
 
-HTML is escaped, line breaks preserved:
-```
-Input: "Hello <script>alert('xss')</script>\nWorld"
-Output: "Hello &lt;script&gt;alert('xss')&lt;/script&gt;<br>World"
-```
+---
 
-### Markdown
+## 🤖 Custom Spam Detection
 
-```python
-DJANGO_COMMENTS_CONFIG = {
-    'COMMENT_FORMAT': 'markdown',
-}
-```
-
-Install dependency:
-```bash
-pip install markdown
-```
-
-Supports:
-- **Bold**, *italic*, `code`
-- Links: [text](url)
-- Lists, blockquotes, tables
-- Code blocks with syntax highlighting
-- Automatic line breaks
-
-### HTML (Sanitized)
-
-```python
-DJANGO_COMMENTS_CONFIG = {
-    'COMMENT_FORMAT': 'html',
-}
-```
-
-Install dependency:
-```bash
-pip install bleach
-```
-
-Allowed tags: `p`, `br`, `strong`, `em`, `u`, `a`, `ul`, `ol`, `li`, `blockquote`, `code`, `pre`, `h1-h6`, `table` elements
-
-**XSS Protection:** All dangerous tags, attributes, and JavaScript are stripped.
-
-### Using in Templates
-
-```django
-{% load comment_tags %}
-
-{% for comment in comments %}
-    <div class="comment">
-        {{ comment.content|format_comment }}  {# Automatically formatted #}
-    </div>
-{% endfor %}
-```
-
-### Using in API
-
-```python
-from rest_framework import serializers
-from django_comments.formatting import render_comment_content
-
-class CommentSerializer(serializers.ModelSerializer):
-    formatted_content = serializers.SerializerMethodField()
-    
-    def get_formatted_content(self, obj):
-        return render_comment_content(obj.content)
-```
-
-## 🛡️ Spam Detection
-
-### Basic Spam Detection (Word List)
+### Simple Word-Based Detection
 
 ```python
 DJANGO_COMMENTS_CONFIG = {
     'SPAM_DETECTION_ENABLED': True,
-    'SPAM_WORDS': ['viagra', 'casino', 'lottery', 'click here'],
-    'SPAM_ACTION': 'flag',  # Auto-flag as spam
+    'SPAM_WORDS': [
+        'viagra', 'casino', 'lottery', 'prize', 
+        'click here', 'buy now', 'limited time'
+    ],
+    'SPAM_ACTION': 'flag',
 }
 ```
 
-### Custom Spam Detector
+### Custom ML-Based Detection
 
 ```python
 # myapp/spam.py
-def detect_spam(content: str) -> tuple:
+import joblib
+
+# Load your trained model
+model = joblib.load('path/to/spam_model.pkl')
+vectorizer = joblib.load('path/to/vectorizer.pkl')
+
+def detect_spam(content):
     """
-    Custom spam detector.
+    Custom spam detection using ML model.
     
+    Args:
+        content (str): Comment content to check
+        
     Returns:
-        tuple: (is_spam: bool, reason: str or None)
+        tuple: (is_spam: bool, reason: str)
     """
-    # Example: Check for excessive caps
-    if content.isupper() and len(content) > 10:
-        return True, "All caps (shouting)"
+    # Vectorize and predict
+    features = vectorizer.transform([content])
+    prediction = model.predict(features)[0]
+    probability = model.predict_proba(features)[0][1]
     
-    # Example: Check for excessive exclamation marks
-    if content.count('!!!') > 5:
-        return True, "Excessive exclamation marks"
-    
-    # Example: Check for multiple URLs
-    import re
-    urls = re.findall(r'http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\\(\\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+', content)
-    if len(urls) > 3:
-        return True, "Multiple URLs detected"
+    if prediction == 1:  # Spam
+        return True, f"Spam detected (confidence: {probability:.2%})"
     
     return False, None
 
 # settings.py
 DJANGO_COMMENTS_CONFIG = {
+    'SPAM_DETECTION_ENABLED': True,
     'SPAM_DETECTOR': 'myapp.spam.detect_spam',
+    'SPAM_ACTION': 'hide',  # Auto-hide detected spam
 }
 ```
 
-### ML-Based Spam Detector
+---
+
+## 🚫 Auto-Moderation System
+
+### Flag-Based Auto-Moderation
 
 ```python
-# myapp/ml_spam.py
-import joblib
-import os
-
-# Load model once (cache it)
-MODEL_PATH = os.path.join(os.path.dirname(__file__), 'spam_model.pkl')
-VECTORIZER_PATH = os.path.join(os.path.dirname(__file__), 'vectorizer.pkl')
-
-model = joblib.load(MODEL_PATH)
-vectorizer = joblib.load(VECTORIZER_PATH)
-
-def ml_spam_detector(content: str) -> tuple:
-    """
-    ML-based spam detector using scikit-learn.
+DJANGO_COMMENTS_CONFIG = {
+    # Hide comment after 3 user flags
+    'AUTO_HIDE_THRESHOLD': 3,
     
-    Returns:
-        tuple: (is_spam: bool, reason: str or None)
-    """
-    try:
-        # Vectorize content
-        features = vectorizer.transform([content])
-        
-        # Predict
-        prediction = model.predict(features)[0]
-        probability = model.predict_proba(features)[0][1]
-        
-        if prediction == 1:  # Spam
-            return True, f"ML confidence: {probability:.2%}"
-        
-        return False, None
-        
-    except Exception as e:
-        # Log error and fall back to non-spam
-        import logging
-        logging.error(f"ML spam detection error: {e}")
-        return False, None
-
-# settings.py
-DJANGO_COMMENTS_CONFIG = {
-    'SPAM_DETECTOR': 'myapp.ml_spam.ml_spam_detector',
-}
-```
-
-## ⏱️ Rate Limiting
-
-### Enable Rate Limiting
-
-```python
-# settings.py
-DJANGO_COMMENTS_CONFIG = {
-    'API_RATE_LIMIT': '100/day',          # Authenticated users
-    'API_RATE_LIMIT_ANON': '20/day',      # Anonymous users
-    'API_RATE_LIMIT_BURST': '5/min',      # Burst protection
-}
-
-# Configure DRF throttling
-REST_FRAMEWORK = {
-    'DEFAULT_THROTTLE_CLASSES': [],
-    'DEFAULT_THROTTLE_RATES': {
-        'comment': '100/day',
-        'comment_anon': '20/day',
-        'comment_burst': '5/min',
-    }
-}
-```
-
-### Apply to ViewSet
-
-```python
-from django_comments.drf_integration import get_comment_throttle_classes
-from rest_framework import viewsets
-
-class CommentViewSet(viewsets.ModelViewSet):
-    throttle_classes = get_comment_throttle_classes()
-    # ... rest of viewset
-```
-
-### Custom Rate Limits
-
-```python
-from rest_framework.throttling import UserRateThrottle
-
-class CustomCommentThrottle(UserRateThrottle):
-    scope = 'custom_comment'
+    # Delete comment after 10 user flags
+    'AUTO_DELETE_THRESHOLD': 10,
     
-    def allow_request(self, request, view):
-        # Only throttle POST requests
-        if request.method != 'POST':
-            return True
-        return super().allow_request(request, view)
-
-# Use in settings
-DJANGO_COMMENTS_CONFIG = {
-    'API_RATE_LIMIT': 'custom_comment',
-}
-
-REST_FRAMEWORK = {
-    'DEFAULT_THROTTLE_RATES': {
-        'custom_comment': '50/hour',
-    }
+    # Notify moderators at first flag
+    'FLAG_NOTIFICATION_THRESHOLD': 1,
+    
+    # Auto-hide detected spam immediately
+    'AUTO_HIDE_DETECTED_SPAM': True,
 }
 ```
 
-## 📄 Pagination
-
-### Standard Pagination
+### Auto-Ban System
 
 ```python
 DJANGO_COMMENTS_CONFIG = {
-    'PAGE_SIZE': 20,
-    'PAGE_SIZE_QUERY_PARAM': 'page_size',
-    'MAX_PAGE_SIZE': 100,
+    # Ban user after 5 rejected comments
+    'AUTO_BAN_AFTER_REJECTIONS': 5,
+    
+    # Ban user after 3 spam flags across all their comments
+    'AUTO_BAN_AFTER_SPAM_FLAGS': 3,
+    
+    # Default ban duration (None = permanent)
+    'DEFAULT_BAN_DURATION_DAYS': 30,
 }
 ```
 
-API Usage:
-```
-GET /api/comments/?page=2
-GET /api/comments/?page=1&page_size=50
-```
+**How Auto-Ban Works:**
+1. User posts spammy content
+2. Comments get flagged or rejected
+3. When thresholds reached → User automatically banned
+4. Ban notification sent to user
+5. All future comment attempts blocked
 
-### Thread-Aware Pagination
+---
 
-Automatically used when `MAX_COMMENT_DEPTH` is set:
+## ✏️ Comment Editing
+
+### Enable Editing
 
 ```python
 DJANGO_COMMENTS_CONFIG = {
-    'MAX_COMMENT_DEPTH': 3,
-    'PAGE_SIZE': 20,
+    # Allow users to edit their comments
+    'ALLOW_COMMENT_EDITING': True,
+    
+    # 1 hour editing window
+    'EDIT_TIME_WINDOW': 3600,
+    
+    # Track all edits
+    'TRACK_EDIT_HISTORY': True,
 }
 ```
 
-This paginates root comments and includes all their children.
-
-### Apply to ViewSet
+### API Usage
 
 ```python
-from django_comments.drf_integration import get_comment_pagination_class
-from rest_framework import viewsets
+# Edit a comment
+PATCH /api/comments/{id}/
+{
+    "content": "Updated comment content"
+}
 
-class CommentViewSet(viewsets.ModelViewSet):
-    pagination_class = get_comment_pagination_class()
-    # ... rest of viewset
+# View edit history (admin only)
+GET /api/comments/{id}/revisions/
 ```
 
-## 🔌 API Usage
+---
 
-### REST API Endpoints
+## ⚖️ GDPR Compliance
 
+### Enable GDPR Features
+
+```python
+DJANGO_COMMENTS_CONFIG = {
+    'GDPR_ENABLED': True,
+    
+    # User rights
+    'GDPR_ALLOW_USER_DATA_EXPORT': True,
+    'GDPR_ALLOW_USER_DATA_DELETION': True,
+    
+    # Auto-anonymize when user account deleted
+    'GDPR_ANONYMIZE_ON_USER_DELETE': True,
+    
+    # Retention policy
+    'GDPR_ENABLE_RETENTION_POLICY': True,
+    'GDPR_RETENTION_DAYS': 365,
+    
+    # Privacy settings
+    'GDPR_COLLECT_IP_ADDRESS': True,
+    'GDPR_COLLECT_USER_AGENT': True,
+    'GDPR_ANONYMIZE_IP_ON_RETENTION': True,
+}
 ```
-GET    /api/comments/                      - List all comments
-POST   /api/comments/                      - Create comment
-GET    /api/comments/{id}/                 - Get comment
-PATCH  /api/comments/{id}/                 - Update comment
-DELETE /api/comments/{id}/                 - Delete comment
-POST   /api/comments/{id}/flag/            - Flag comment
-POST   /api/comments/{id}/approve/         - Approve comment (moderators)
-POST   /api/comments/{id}/reject/          - Reject comment (moderators)
-GET    /api/content/{type}/{id}/comments/  - Get comments for object
+
+### Data Export
+
+```python
+from django_comments.gdpr import export_user_data
+
+# Export all user's comment data
+data = export_user_data(user)
+# Returns: {
+#     'comments': [...],
+#     'flags': [...],
+#     'moderation_actions': [...],
+#     'export_date': '2025-01-15T10:30:00Z'
+# }
 ```
 
-### Creating a Comment
+### Data Deletion/Anonymization
 
-```javascript
-// POST /api/comments/
+```python
+from django_comments.gdpr import anonymize_user_data
+
+# Anonymize all user's data
+anonymize_user_data(user)
+# Anonymizes: username, email, IP addresses, user agent
+# Keeps: comment content (attributed to "Anonymous")
+```
+
+### Management Commands
+
+```bash
+# Anonymize comments older than retention period
+python manage.py anonymize_old_comments
+
+# Schedule in cron
+0 2 * * 0 python manage.py anonymize_old_comments  # Weekly at 2 AM
+```
+
+---
+
+## 🔌 API Endpoints
+
+### Comments
+
+```http
+# List comments
+GET /api/comments/
+GET /api/comments/?content_type=blog.post&object_id=123
+GET /api/comments/?user=5&is_public=true
+GET /api/comments/?search=keyword
+GET /api/comments/?ordering=-created_at
+
+# Create comment
+POST /api/comments/
 {
     "content_type": "blog.post",
     "object_id": "123",
     "content": "Great article!",
-    "parent": null  // Optional: ID of parent comment for replies
+    "parent": null
 }
 
-// Response
+# Get comment
+GET /api/comments/{id}/
+
+# Update comment
+PATCH /api/comments/{id}/
 {
-    "id": "uuid-or-int",
-    "content": "Great article!",
-    "formatted_content": "<p>Great article!</p>",  // If formatting enabled
-    "user_info": {
-        "id": 1,
-        "username": "john",
-        "display_name": "John Doe"
-    },
-    "created_at": "2024-01-01T12:00:00Z",
-    "is_public": true,
-    "children_count": 0,
-    "flags_count": 0,
-    // ... more fields
+    "content": "Updated content"
 }
-```
 
-### Listing Comments
+# Delete comment
+DELETE /api/comments/{id}/
 
-```javascript
-// GET /api/comments/?content_type=blog.post&object_id=123
+# Approve comment (moderators only)
+POST /api/comments/{id}/approve/
 
-// Response
+# Reject comment (moderators only)
+POST /api/comments/{id}/reject/
+
+# Flag comment
+POST /api/comments/{id}/flag/
 {
-    "count": 50,
-    "next": "http://api/comments/?page=2",
-    "previous": null,
-    "results": [
-        {
-            "id": 1,
-            "content": "Great article!",
-            // ... full comment data
-        }
-    ]
+    "flag": "spam",  # or "inappropriate", "harassment"
+    "reason": "This is spam"
 }
 ```
 
-### Filtering & Search
+### Flags
 
-```
-GET /api/comments/?content_type=blog.post&object_id=123
-GET /api/comments/?user=5
-GET /api/comments/?created_after=2024-01-01
-GET /api/comments/?is_public=true
-GET /api/comments/?search=django
-GET /api/comments/?ordering=-created_at
-GET /api/comments/?parent=none  # Root comments only
-```
+```http
+# List flags (moderators only)
+GET /api/flags/
+GET /api/flags/?comment={comment_id}
+GET /api/flags/?user={user_id}
+GET /api/flags/?flag=spam
 
-### Flagging a Comment
-
-```javascript
-// POST /api/comments/{id}/flag/
+# Review flag (moderators only)
+POST /api/flags/{id}/review/
 {
-    "flag_type": "spam",
-    "reason": "This is clearly spam content"
-}
-
-// Response
-{
-    "id": 1,
-    "flag_type": "spam",
-    "reason": "This is clearly spam content",
-    "created_at": "2024-01-01T12:00:00Z"
+    "action": "approve"  # or "dismiss"
 }
 ```
 
-## 🎨 Django Templates
+### Banned Users
 
-### Template Tags
+```http
+# List banned users (moderators only)
+GET /api/banned-users/
+GET /api/banned-users/?is_active=true
 
-Load the template tags:
+# Ban user (moderators only)
+POST /api/banned-users/
+{
+    "user": 5,
+    "reason": "Repeated spam",
+    "banned_until": "2025-02-15T00:00:00Z"  # null for permanent
+}
+
+# Unban user (moderators only)
+DELETE /api/banned-users/{id}/
+```
+
+### Content Object Comments
+
+```http
+# Get all comments for a specific object
+GET /api/content-comments/
+?content_type=blog.post
+&object_id=123
+&ordering=-created_at
+```
+
+---
+
+## 🏷️ Template Tags
+
+### Load Template Tags
 
 ```django
 {% load comment_tags %}
 ```
 
-### Get Comment Count
-
-```django
-{# Get count (uses cache) #}
-<p>{% get_comment_count post %} comments</p>
-
-{# Include non-public comments #}
-<p>{% get_comment_count post public_only=False %} total comments</p>
-```
-
-### Check if Object Has Comments
-
-```django
-{% if post|has_comments %}
-    <a href="#comments">View Comments</a>
-{% endif %}
-```
-
 ### Display Comments
 
 ```django
-{# Get all comments #}
-{% get_comments_for post as comments %}
+{# Render comment form #}
+{% render_comment_form for article %}
+
+{# Display comment count #}
+{% get_comment_count for article as comment_count %}
+<p>{{ comment_count }} comments</p>
+
+{# List comments #}
+{% get_comments for article as comments %}
 {% for comment in comments %}
     <div class="comment">
-        <strong>{{ comment.get_user_name }}</strong>
+        <strong>{{ comment.user.username }}</strong>
         <p>{{ comment.content }}</p>
         <small>{{ comment.created_at }}</small>
     </div>
 {% endfor %}
+
+{# Check if user can comment #}
+{% can_comment user article as can_post %}
+{% if can_post %}
+    <a href="{% url 'add_comment' %}">Add Comment</a>
+{% endif %}
 ```
 
-### Display Threaded Comments
+---
 
-```django
-{# Get root comments with children prefetched #}
-{% get_root_comments_for post as root_comments %}
-{% for comment in root_comments %}
-    <div class="comment">
-        <strong>{{ comment.get_user_name }}</strong>
-        <p>{{ comment.content }}</p>
-        
-        {# Display replies #}
-        {% for child in comment.children.all %}
-            <div class="reply">
-                <strong>{{ child.get_user_name }}</strong>
-                <p>{{ child.content }}</p>
-            </div>
-        {% endfor %}
-    </div>
-{% endfor %}
-```
+## 🔔 Signals
 
-### Show Comment Count Widget
-
-```django
-{# Renders django_comments/comment_count.html #}
-{% show_comment_count post %}
-{% show_comment_count post link=False %}
-```
-
-### Show Comment List Widget
-
-```django
-{# Renders django_comments/comment_list.html #}
-{% show_comments post %}
-{% show_comments post max_comments=5 %}
-```
-
-## 🐍 Python Usage
-
-### Get Comment Count
+### Available Signals
 
 ```python
-from django_comments.cache import get_comment_count_for_object
-
-# Get count (uses cache)
-count = get_comment_count_for_object(post, public_only=True)
-```
-
-### Get Comments for Object
-
-```python
-from django_comments.models import Comment
-
-# Optimized query (prevents N+1)
-comments = Comment.objects.for_model(post).optimized_for_list()
-
-# Public comments only
-comments = Comment.objects.for_model(post).public()
-
-# Root comments only
-comments = Comment.objects.for_model(post).root_nodes()
-```
-
-### Create Comment
-
-```python
-from django_comments.models import Comment
-from django.contrib.contenttypes.models import ContentType
-
-content_type = ContentType.objects.get_for_model(post)
-comment = Comment.objects.create(
-    content_type=content_type,
-    object_id=post.pk,
-    user=request.user,
-    content="Great article!"
+from django_comments.signals import (
+    comment_created,
+    comment_updated,
+    comment_deleted,
+    comment_flagged,
+    comment_approved,
+    comment_rejected,
+    user_banned,
+    user_unbanned,
 )
 ```
 
-### Using Signals
+### Example Usage
 
 ```python
 from django.dispatch import receiver
-from django_comments.signals import comment_post_save, comment_flagged
+from django_comments.signals import comment_created, comment_flagged
 
-@receiver(comment_post_save)
-def handle_new_comment(sender, comment, created, **kwargs):
-    if created:
-        # Do something with new comment
-        print(f"New comment: {comment.content}")
+@receiver(comment_created)
+def notify_on_new_comment(sender, instance, **kwargs):
+    """Send custom notification when comment is created."""
+    print(f"New comment: {instance.content}")
+    # Your custom logic here
 
 @receiver(comment_flagged)
-def handle_flagged_comment(sender, flag, comment, user, **kwargs):
-    # Handle flagged content
-    if flag.flag == 'spam':
-        # Auto-hide spam comments
-        comment.is_public = False
-        comment.save()
+def handle_flagged_comment(sender, instance, flag, user, **kwargs):
+    """Handle when comment is flagged."""
+    if flag == 'spam':
+        # Custom spam handling
+        pass
 ```
 
-### Batch Operations
-
-```python
-from django_comments.cache import get_comment_counts_for_objects
-
-# Get counts for multiple objects efficiently
-posts = Post.objects.all()[:20]
-post_ids = [p.id for p in posts]
-counts = get_comment_counts_for_objects(Post, post_ids, public_only=True)
-
-# counts = {post_id: count, ...}
-for post in posts:
-    print(f"{post.title}: {counts.get(post.id, 0)} comments")
-```
-
-### Pre-warming Cache
-
-```python
-from django_comments.cache import warm_comment_cache_for_queryset
-
-# Pre-warm cache for better performance
-posts = Post.objects.all()[:50]
-warm_comment_cache_for_queryset(posts)
-
-# Now getting counts is instant (from cache)
-for post in posts:
-    count = get_comment_count_for_object(post)
-```
-
-## 🔧 Management Commands
-
-### Clean Up Old Comments
-
-```bash
-# Remove comments older than 30 days
-python manage.py cleanup_comments --days 30
-
-# Remove spam comments
-python manage.py cleanup_comments --remove-spam
-
-# Remove non-public comments
-python manage.py cleanup_comments --remove-non-public
-
-# Remove flagged comments
-python manage.py cleanup_comments --remove-flagged
-
-# Dry run (see what would be deleted)
-python manage.py cleanup_comments --days 30 --dry-run
-
-# Verbose output
-python manage.py cleanup_comments --days 30 --verbose
-```
+---
 
 ## 🧪 Testing
 
-### Run Tests
+Run the comprehensive test suite:
 
 ```bash
-# Install dev dependencies
-pip install -e ".[dev]"
-
 # Run all tests
-pytest
+python manage.py test django_comments
+
+# Run specific test modules
+python manage.py test django_comments.tests.test_models
+python manage.py test django_comments.tests.test_views
+python manage.py test django_comments.tests.test_signals
 
 # Run with coverage
-pytest --cov=django_comments
-
-# Run specific test file
-pytest django_comments/tests/test_api.py
-
-# Run with verbose output
-pytest -v
-
-# Run specific test
-pytest django_comments/tests/test_notifications_complete.py::TestNotifications::test_new_comment_notification
+pip install coverage
+coverage run --source='django_comments' manage.py test django_comments
+coverage report
 ```
 
-### Test Coverage
+**Test Coverage:**
+- 280+ tests
+- 95%+ code coverage
+- All critical paths tested
+- Edge cases covered
 
-```
-Name                                    Stmts   Miss  Cover
------------------------------------------------------------
-django_comments/__init__.py                 3      0   100%
-django_comments/models.py                 150      0   100%
-django_comments/admin.py                   80      0   100%
-django_comments/api/views.py              120      0   100%
-django_comments/api/serializers.py        100      0   100%
-django_comments/notifications.py           90      0   100%
-django_comments/formatting.py              50      0   100%
-django_comments/drf_integration.py         60      0   100%
------------------------------------------------------------
-TOTAL                                     653      0   100%
-```
+---
 
-## 📚 Advanced Topics
+## 📋 Management Commands
 
-### Custom Comment Model
-
-```python
-# Not yet fully supported, but you can extend via proxy:
-from django_comments.models import Comment
-
-class RatedComment(Comment):
-    rating = models.IntegerField(default=0)
-    
-    class Meta:
-        proxy = True
-```
-
-### Celery Integration
-
-```python
-# tasks.py
-from celery import shared_task
-from django_comments.notifications import notify_new_comment
-from django_comments.models import Comment
-
-@shared_task
-def send_comment_notification_async(comment_id):
-    """Send comment notification asynchronously."""
-    comment = Comment.objects.get(pk=comment_id)
-    notify_new_comment(comment)
-
-# signals.py
-from .tasks import send_comment_notification_async
-
-@receiver(comment_post_save)
-def handle_new_comment(sender, comment, created, **kwargs):
-    if created:
-        # Send notification asynchronously
-        send_comment_notification_async.delay(comment.pk)
-```
-
-### GraphQL Integration
-
-```python
-import graphene
-from graphene_django import DjangoObjectType
-from django_comments.models import Comment
-from django_comments.cache import get_comment_count_for_object
-
-class CommentType(DjangoObjectType):
-    class Meta:
-        model = Comment
-
-class PostType(DjangoObjectType):
-    comment_count = graphene.Int()
-    
-    def resolve_comment_count(self, info):
-        return get_comment_count_for_object(self, public_only=True)
-    
-    class Meta:
-        model = Post
-```
-
-### Custom Permissions
-
-```python
-from rest_framework import permissions
-from django_comments.conf import comments_settings
-
-class CustomCommentPermission(permissions.BasePermission):
-    def has_permission(self, request, view):
-        # Custom logic
-        if view.action == 'create':
-            # Only allow verified users to comment
-            return request.user.is_authenticated and request.user.profile.is_verified
-        return True
-```
-
-## 📊 Performance Benchmarks
-
-On a typical blog with 1000 posts and 10,000 comments:
-
-| Operation | Without Optimization | With Optimization | Improvement |
-|-----------|---------------------|-------------------|-------------|
-| List 20 posts with counts | ~500ms (200+ queries) | ~50ms (2-3 queries) | **10x faster** |
-| Display post with comments | ~300ms (50+ queries) | ~30ms (1-2 queries) | **10x faster** |
-| API list endpoint | ~200ms | ~100ms | **2x faster** |
-| Comment creation | ~50ms | ~55ms | **Negligible** |
-
-**Cache hit rates:** Typically 95%+ in production with proper cache warming
-
-## 🔒 Security Features
-
-- ✅ **XSS Protection** - HTML sanitization via bleach
-- ✅ **CSRF Protection** - Django's built-in CSRF
-- ✅ **Rate Limiting** - Prevents spam and DoS attacks
-- ✅ **Content Validation** - Spam and profanity detection
-- ✅ **Permission System** - Fine-grained access control
-- ✅ **SQL Injection Protection** - Django ORM
-- ✅ **Depth Limiting** - Prevents memory exhaustion
-- ✅ **Input Sanitization** - Bleach whitelist
-
-## 📋 Requirements
-
-- Python >= 3.8
-- Django >= 3.2
-- djangorestframework >= 3.12.0
-- django-filter >= 21.1
-
-### Optional Dependencies
+### Cleanup Comments
 
 ```bash
-pip install markdown  # For Markdown formatting
-pip install bleach    # For HTML sanitization
-pip install celery    # For async email notifications
-pip install redis     # For caching and rate limiting
+# Remove non-public comments older than CLEANUP_AFTER_DAYS
+python manage.py cleanup_comments
+
+# Dry run (show what would be deleted)
+python manage.py cleanup_comments --dry-run
 ```
+
+### Anonymize Old Comments (GDPR)
+
+```bash
+# Anonymize personal data older than GDPR_RETENTION_DAYS
+python manage.py anonymize_old_comments
+
+# Dry run
+python manage.py anonymize_old_comments --dry-run
+```
+
+### Moderation Queue
+
+```bash
+# Show comments pending moderation
+python manage.py show_moderation_queue
+
+# Show specific status
+python manage.py show_moderation_queue --status=flagged
+```
+
+---
+
+## 🎯 Use Cases
+
+### Blog Comments
+
+```python
+# models.py
+from django.db import models
+
+class Post(models.Model):
+    title = models.CharField(max_length=200)
+    content = models.TextField()
+    published = models.DateTimeField(auto_now_add=True)
+
+# settings.py
+DJANGO_COMMENTS_CONFIG = {
+    'COMMENTABLE_MODELS': ['blog.Post'],
+    'COMMENT_FORMAT': 'markdown',
+    'ALLOW_ANONYMOUS': True,
+    'MODERATOR_REQUIRED': False,
+}
+```
+
+### Product Reviews
+
+```python
+# models.py
+class Product(models.Model):
+    name = models.CharField(max_length=200)
+    price = models.DecimalField(max_digits=10, decimal_places=2)
+
+# settings.py
+DJANGO_COMMENTS_CONFIG = {
+    'COMMENTABLE_MODELS': ['products.Product'],
+    'MODERATOR_REQUIRED': True,  # Review all product feedback
+    'ALLOW_ANONYMOUS': False,  # Verified purchases only
+    'SEND_NOTIFICATIONS': True,
+}
+```
+
+### Community Forum
+
+```python
+# settings.py
+DJANGO_COMMENTS_CONFIG = {
+    'COMMENTABLE_MODELS': ['forum.Thread'],
+    'MAX_COMMENT_DEPTH': None,  # Unlimited threading
+    'ALLOW_COMMENT_EDITING': True,
+    'EDIT_TIME_WINDOW': None,  # Edit anytime
+    'TRACK_EDIT_HISTORY': True,
+    'SPAM_DETECTION_ENABLED': True,
+    'AUTO_BAN_AFTER_SPAM_FLAGS': 3,
+}
+```
+
+---
+
+## 🔐 Security Considerations
+
+### XSS Protection
+
+```python
+# HTML format with sanitization
+DJANGO_COMMENTS_CONFIG = {
+    'COMMENT_FORMAT': 'html',
+}
+
+# Only these tags allowed by default:
+# <p>, <br>, <strong>, <em>, <a>, <code>, <pre>, <ul>, <ol>, <li>
+```
+
+### Rate Limiting
+
+```python
+# Prevent spam/abuse
+DJANGO_COMMENTS_CONFIG = {
+    'API_RATE_LIMIT': '100/day',
+    'API_RATE_LIMIT_ANON': '20/day',
+    'API_RATE_LIMIT_BURST': '5/min',
+    'MAX_FLAGS_PER_DAY': 20,
+    'MAX_FLAGS_PER_HOUR': 5,
+}
+```
+
+### Content Validation
+
+```python
+# Automatic content checking
+DJANGO_COMMENTS_CONFIG = {
+    'SPAM_DETECTION_ENABLED': True,
+    'PROFANITY_FILTERING': True,
+    'MAX_COMMENT_LENGTH': 3000,
+}
+```
+
+---
+
+## 🚀 Performance Tips
+
+### Caching
+
+```python
+# settings.py
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.redis.RedisCache',
+        'LOCATION': 'redis://127.0.0.1:6379/1',
+    }
+}
+
+DJANGO_COMMENTS_CONFIG = {
+    'CACHE_TIMEOUT': 3600,  # 1 hour
+}
+```
+
+### Database Optimization
+
+```python
+# Use select_related and prefetch_related in queries
+from django_comments.models import Comment
+
+# Efficient querying
+comments = Comment.objects.select_related('user', 'content_type').filter(
+    is_public=True
+)
+```
+
+### Async Notifications
+
+```python
+# Use Celery for async email sending
+DJANGO_COMMENTS_CONFIG = {
+    'USE_ASYNC_NOTIFICATIONS': True,
+}
+```
+
+---
 
 ## 🤝 Contributing
 
-Contributions are welcome! Please check out our [Contributing Guide](CONTRIBUTING.md).
+We love contributions! Here's how to get started:
+
+1. **Fork the repository**
+2. **Create a feature branch**
+   ```bash
+   git checkout -b feature/amazing-feature
+   ```
+3. **Make your changes**
+4. **Run tests**
+   ```bash
+   python manage.py test django_comments
+   ```
+5. **Commit your changes**
+   ```bash
+   git commit -m "Add amazing feature"
+   ```
+6. **Push to your fork**
+   ```bash
+   git push origin feature/amazing-feature
+   ```
+7. **Open a Pull Request**
+
+Please check out our [Contributing Guide](CONTRIBUTING.md) for more details.
+
+### Development Setup
+
+```bash
+# Clone the repository
+git clone https://github.com/NzeStan/django-reusable-comments.git
+cd django-reusable-comments
+
+# Create virtual environment
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+
+# Install dependencies
+pip install -e ".[dev]"
+
+# Run tests
+python manage.py test django_comments
+```
+
+---
 
 ## 📄 License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
+---
+
 ## 🆘 Support
 
+- **Documentation**: [Full Documentation](https://django-reusable-comments.readthedocs.io/)
 - **Issues**: [GitHub Issues](https://github.com/NzeStan/django-reusable-comments/issues)
 - **Discussions**: [GitHub Discussions](https://github.com/NzeStan/django-reusable-comments/discussions)
-- **Documentation**: [Full Documentation](https://django-reusable-comments.readthedocs.io/)
+
+---
 
 ## 📝 Changelog
 
 See [CHANGELOG.md](CHANGELOG.md) for version history and changes.
 
+---
+
 ## 🏆 Credits
 
-Developed and maintained by **Ifeanyi Stanley Nnamani**.
+**Developed and maintained by Ifeanyi Stanley Nnamani**
 
 Special thanks to all contributors who have helped improve this package!
 
 ---
 
-**Ready to add comments to your Django project?** Install now and get started in 15 minutes! 🚀
+## 🌟 Star History
 
-```bash
-pip install django-reusable-comments
-```# Django Reusable Comments
+If you find this package useful, please consider giving it a ⭐ on GitHub!
 
-A **production-grade**, feature-complete Django app for adding comment functionality to any model. Built with performance optimization, extensive customization options, email notifications, content formatting, spam detection, and full REST API support.
+---
 
-[![Python](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
-[![Django](https://img.shields.io/badge/django-3.2+-green.svg)](https://www.djangoproject.com/)
-[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+## 📊 Quick Stats
 
-## ⚡ What's New in v1.0
-
-- 📧 **Email Notifications** - 5 notification types with beautiful HTML templates
-- 🎨 **Content Formatting** - Plain text, Markdown, and HTML support with XSS protection
-- 🛡️ **Advanced Spam Detection** - Custom ML-ready spam detector callbacks
-- ⏱️ **Rate Limiting** - 3-tier DRF throttling (user/anon/burst protection)
-- 📄 **Smart Pagination** - Thread-aware pagination for nested comments
-- 🔒 **Enhanced Security** - XSS protection, sanitization, profanity filtering
-- ⚙️ **Complete Configuration** - 30+ settings, all fully functional
-
-## 🚀 Features
-
-### Core Features
-- ✅ **Model Agnostic** - Add comments to any Django model
-- ✅ **ID Flexibility** - Support for both UUID and integer primary keys
-- ✅ **Threaded Comments** - Nested replies with configurable depth
-- ✅ **Performance Optimized** - Advanced caching and query optimization
-- ✅ **REST API** - Complete DRF integration with filtering and search
-- ✅ **Admin Interface** - Feature-rich admin with optimized queries
-
-### New Features (v1.0)
-- 📧 **Email Notifications**
-  - New comment notifications
-  - Reply notifications
-  - Approval/rejection notifications
-  - Moderator alerts
-  - Beautiful HTML templates
-
-- 🎨 **Content Formatting**
-  - Plain text (HTML escaped)
-  - Markdown (with extensions)
-  - HTML (sanitized)
-  - XSS protection
-
-- 🛡️ **Spam & Content Control**
-  - Custom spam detector callbacks
-  - ML-ready architecture
-  - Word-based spam detection
-  - Profanity filtering
-  - Automatic flagging
-
-- ⏱️ **API Rate Limiting**
-  - User rate limiting (100/day default)
-  - Anonymous rate limiting (20/day default)
-  - Burst protection (5/min default)
-  - DRF integration
-
-- 📄 **Smart Pagination**
-  - Standard pagination
-  - Thread-aware pagination
-  - Configurable page sizes
-  - Client control
-
-### Additional Features
-- ✅ **Signals** - Robust signal system for extending functionality
-- ✅ **Internationalization** - Full i18n support using gettext_lazy
-- ✅ **Template Tags** - Convenient template tags with caching support
-- ✅ **Testing** - Comprehensive test suite (280+ tests)
-- ✅ **Documentation** - Thorough documentation for developers
-- ✅ **Logging & Error Handling** - Sophisticated error handling
-
-## 📦 Installation
-
-### Quick Install
-
-```bash
-# Install the package
-pip install django-reusable-comments
-
-# Install optional dependencies
-pip install markdown bleach  # For formatting support
-```
-
-### Add to INSTALLED_APPS
-
-```python
-INSTALLED_APPS = [
-    # Django apps
-    'django.contrib.admin',
-    'django.contrib.auth',
-    'django.contrib.contenttypes',
-    'django.contrib.sessions',
-    'django.contrib.messages',
-    'django.contrib.staticfiles',
-    'django.contrib.sites',  # Required for emails
-    
-    # Third-party apps
-    'rest_framework',
-    'django_filters',
-    
-    # Django comments
-    'django_comments',
-    
-    # Your apps
-    # ...
-]
-
-SITE_ID = 1  # Required for email notifications
-```
-
-### Run Migrations
-
-```bash
-python manage.py migrate django_comments
-```
-
-### Include URL Patterns
-
-```python
-# urls.py
-from django.urls import path, include
-
-urlpatterns = [
-    path('admin/', admin.site.urls),
-    path('api/comments/', include('django_comments.urls')),
-    # Your URLs
-]
-```
-
-## ⚙️ Configuration
-
-### Basic Configuration
-
-```python
-# settings.py
-
-DJANGO_COMMENTS_CONFIG = {
-    # Models that can receive comments
-    'COMMENTABLE_MODELS': [
-        'blog.Post',
-        'products.Product',
-    ],
-    
-    # Enable features
-    'SEND_NOTIFICATIONS': True,
-    'COMMENT_FORMAT': 'markdown',  # 'plain', 'markdown', or 'html'
-    'ALLOW_ANONYMOUS': True,
-    
-    # Moderation
-    'MODERATOR_REQUIRED': False,
-    'MAX_COMMENT_DEPTH': 3,
-    
-    # Rate limiting (requires DRF)
-    'API_RATE_LIMIT': '100/day',
-    'API_RATE_LIMIT_ANON': '20/day',
-    'API_RATE_LIMIT_BURST': '5/min',
-    
-    # Pagination
-    'PAGE_SIZE': 20,
-    'MAX_PAGE_SIZE': 100,
-}
-```
-
-### Email Configuration
-
-```python
-# Email backend
-EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
-EMAIL_HOST = 'smtp.gmail.com'
-EMAIL_PORT = 587
-EMAIL_USE_TLS = True
-EMAIL_HOST_USER = 'your-email@gmail.com'
-EMAIL_HOST_PASSWORD = 'your-app-password'
-DEFAULT_FROM_EMAIL = 'noreply@yoursite.com'
-
-# Site configuration (for email links)
-SITE_ID = 1
-
-# Create site object
-from django.contrib.sites.models import Site
-Site.objects.get_or_create(
-    id=1,
-    defaults={'domain': 'yoursite.com', 'name': 'Your Site'}
-)
-```
-
-### Email Templates
-
-Create these templates in `templates/django_comments/email/`:
-
-```
-templates/
-└── django_comments/
-    └── email/
-        ├── new_comment.html
-        ├── comment_reply.html
-        ├── comment_approved.html
-        ├── comment_rejected.html
-        └── moderator_notification.html
-```
-
-**Download templates here:** [Email Templates Package](#email-templates)
-
-### Advanced Configuration
-
-```python
-DJANGO_COMMENTS_CONFIG = {
-    # ============================================================================
-    # CORE SETTINGS
-    # ============================================================================
-    'COMMENTABLE_MODELS': ['blog.Post', 'products.Product'],
-    'USE_UUIDS': False,  # Set to True for UUID primary keys
-    
-    # ============================================================================
-    # EMAIL NOTIFICATIONS
-    # ============================================================================
-    'SEND_NOTIFICATIONS': True,
-    'NOTIFICATION_SUBJECT': '[{site_name}] New comment on {object}',
-    'NOTIFICATION_EMAIL_TEMPLATE': 'django_comments/email/new_comment.html',
-    'NOTIFICATION_REPLY_TEMPLATE': 'django_comments/email/comment_reply.html',
-    'NOTIFICATION_APPROVED_TEMPLATE': 'django_comments/email/comment_approved.html',
-    'NOTIFICATION_REJECTED_TEMPLATE': 'django_comments/email/comment_rejected.html',
-    'NOTIFICATION_MODERATOR_TEMPLATE': 'django_comments/email/moderator_notification.html',
-    
-    # ============================================================================
-    # CONTENT FORMATTING
-    # ============================================================================
-    'COMMENT_FORMAT': 'markdown',  # 'plain', 'markdown', or 'html'
-    
-    # ============================================================================
-    # MODERATION
-    # ============================================================================
-    'MODERATOR_REQUIRED': False,
-    'AUTO_APPROVE_GROUPS': ['Moderators', 'Staff'],
-    'CAN_VIEW_NON_PUBLIC_COMMENTS': ['Moderators', 'Staff'],
-    
-    # ============================================================================
-    # THREADING
-    # ============================================================================
-    'MAX_COMMENT_DEPTH': 3,  # None = unlimited
-    
-    # ============================================================================
-    # CONTENT LIMITS
-    # ============================================================================
-    'MAX_COMMENT_LENGTH': 3000,
-    'ALLOW_ANONYMOUS': True,
-    
-    # ============================================================================
-    # API SETTINGS
-    # ============================================================================
-    'API_RATE_LIMIT': '100/day',
-    'API_RATE_LIMIT_ANON': '20/day',
-    'API_RATE_LIMIT_BURST': '5/min',
-    'PAGE_SIZE': 20,
-    'PAGE_SIZE_QUERY_PARAM': 'page_size',
-    'MAX_PAGE_SIZE': 100,
-    
-    # ============================================================================
-    # SORTING & DISPLAY
-    # ============================================================================
-    'DEFAULT_SORT': '-created_at',
-    'ALLOWED_SORTS': ['-created_at', 'created_at', '-updated_at', 'updated_at'],
-    
-    # ============================================================================
-    # SPAM DETECTION
-    # ============================================================================
-    'SPAM_DETECTION_ENABLED': True,
-    'SPAM_WORDS': ['viagra', 'casino', 'lottery'],
-    'SPAM_ACTION': 'flag',  # 'flag', 'hide', or 'delete'
-    'SPAM_DETECTOR': None,  # Custom callable: 'myapp.spam.detect_spam'
-    
-    # ============================================================================
-    # PROFANITY FILTERING
-    # ============================================================================
-    'PROFANITY_FILTERING': True,
-    'PROFANITY_LIST': ['badword1', 'badword2'],
-    'PROFANITY_ACTION': 'censor',  # 'censor', 'flag', 'hide', or 'delete'
-    
-    # ============================================================================
-    # CLEANUP
-    # ============================================================================
-    'CLEANUP_AFTER_DAYS': 90,  # Remove old non-public comments
-    
-    # ============================================================================
-    # CACHING
-    # ============================================================================
-    'CACHE_TIMEOUT': 3600,  # 1 hour
-    
-    # ============================================================================
-    # LOGGING
-    # ============================================================================
-    'LOGGER_NAME': 'django_comments',
-}
-```
-
-## 📧 Email Notifications
-
-### Notification Types
-
-1. **New Comment** - Sent to content owner when someone comments
-2. **Reply** - Sent to parent comment author when someone replies
-3. **Approval** - Sent to comment author when comment is approved
-4. **Rejection** - Sent to comment author when comment is rejected
-5. **Moderator Alert** - Sent to moderators when comment needs review
-
-### Enable Notifications
-
-```python
-DJANGO_COMMENTS_CONFIG = {
-    'SEND_NOTIFICATIONS': True,
-}
-
-# Configure email backend
-EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
-# ... (see Email Configuration above)
-```
-
-### Async Email (Recommended for Production)
-
-```python
-# Using Celery (recommended)
-from celery import shared_task
-from django_comments.notifications import notify_new_comment
-
-@shared_task
-def send_comment_notification(comment_id):
-    from django_comments.models import Comment
-    comment = Comment.objects.get(pk=comment_id)
-    notify_new_comment(comment)
-```
-
-## 🎨 Content Formatting
-
-### Plain Text (Default)
-
-```python
-DJANGO_COMMENTS_CONFIG = {
-    'COMMENT_FORMAT': 'plain',
-}
-```
-
-HTML is escaped, line breaks preserved:
-```
-Input: "Hello <script>alert('xss')</script>\nWorld"
-Output: "Hello &lt;script&gt;alert('xss')&lt;/script&gt;<br>World"
-```
-
-### Markdown
-
-```python
-DJANGO_COMMENTS_CONFIG = {
-    'COMMENT_FORMAT': 'markdown',
-}
-```
-
-Install dependency:
-```bash
-pip install markdown
-```
-
-Supports:
-- **Bold**, *italic*, `code`
-- Links: [text](url)
-- Lists, blockquotes, tables
-- Code blocks with syntax highlighting
-- Automatic line breaks
-
-### HTML (Sanitized)
-
-```python
-DJANGO_COMMENTS_CONFIG = {
-    'COMMENT_FORMAT': 'html',
-}
-```
-
-Install dependency:
-```bash
-pip install bleach
-```
-
-Allowed tags: `p`, `br`, `strong`, `em`, `u`, `a`, `ul`, `ol`, `li`, `blockquote`, `code`, `pre`, `h1-h6`, `table` elements
-
-**XSS Protection:** All dangerous tags, attributes, and JavaScript are stripped.
-
-### Using in Templates
-
-```django
-{% load comment_tags %}
-
-{% for comment in comments %}
-    <div class="comment">
-        {{ comment.content|format_comment }}  {# Automatically formatted #}
-    </div>
-{% endfor %}
-```
-
-### Using in API
-
-```python
-from rest_framework import serializers
-from django_comments.formatting import render_comment_content
-
-class CommentSerializer(serializers.ModelSerializer):
-    formatted_content = serializers.SerializerMethodField()
-    
-    def get_formatted_content(self, obj):
-        return render_comment_content(obj.content)
-```
-
-## 🛡️ Spam Detection
-
-### Basic Spam Detection (Word List)
-
-```python
-DJANGO_COMMENTS_CONFIG = {
-    'SPAM_DETECTION_ENABLED': True,
-    'SPAM_WORDS': ['viagra', 'casino', 'lottery', 'click here'],
-    'SPAM_ACTION': 'flag',  # Auto-flag as spam
-}
-```
-
-### Custom Spam Detector
-
-```python
-# myapp/spam.py
-def detect_spam(content: str) -> tuple:
-    """
-    Custom spam detector.
-    
-    Returns:
-        tuple: (is_spam: bool, reason: str or None)
-    """
-    # Example: Check for excessive caps
-    if content.isupper() and len(content) > 10:
-        return True, "All caps (shouting)"
-    
-    # Example: Check for excessive exclamation marks
-    if content.count('!!!') > 5:
-        return True, "Excessive exclamation marks"
-    
-    # Example: Check for multiple URLs
-    import re
-    urls = re.findall(r'http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\\(\\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+', content)
-    if len(urls) > 3:
-        return True, "Multiple URLs detected"
-    
-    return False, None
-
-# settings.py
-DJANGO_COMMENTS_CONFIG = {
-    'SPAM_DETECTOR': 'myapp.spam.detect_spam',
-}
-```
-
-### ML-Based Spam Detector
-
-```python
-# myapp/ml_spam.py
-import joblib
-import os
-
-# Load model once (cache it)
-MODEL_PATH = os.path.join(os.path.dirname(__file__), 'spam_model.pkl')
-VECTORIZER_PATH = os.path.join(os.path.dirname(__file__), 'vectorizer.pkl')
-
-model = joblib.load(MODEL_PATH)
-vectorizer = joblib.load(VECTORIZER_PATH)
-
-def ml_spam_detector(content: str) -> tuple:
-    """
-    ML-based spam detector using scikit-learn.
-    
-    Returns:
-        tuple: (is_spam: bool, reason: str or None)
-    """
-    try:
-        # Vectorize content
-        features = vectorizer.transform([content])
-        
-        # Predict
-        prediction = model.predict(features)[0]
-        probability = model.predict_proba(features)[0][1]
-        
-        if prediction == 1:  # Spam
-            return True, f"ML confidence: {probability:.2%}"
-        
-        return False, None
-        
-    except Exception as e:
-        # Log error and fall back to non-spam
-        import logging
-        logging.error(f"ML spam detection error: {e}")
-        return False, None
-
-# settings.py
-DJANGO_COMMENTS_CONFIG = {
-    'SPAM_DETECTOR': 'myapp.ml_spam.ml_spam_detector',
-}
-```
-
-## ⏱️ Rate Limiting
-
-### Enable Rate Limiting
-
-```python
-# settings.py
-DJANGO_COMMENTS_CONFIG = {
-    'API_RATE_LIMIT': '100/day',          # Authenticated users
-    'API_RATE_LIMIT_ANON': '20/day',      # Anonymous users
-    'API_RATE_LIMIT_BURST': '5/min',      # Burst protection
-}
-
-# Configure DRF throttling
-REST_FRAMEWORK = {
-    'DEFAULT_THROTTLE_CLASSES': [],
-    'DEFAULT_THROTTLE_RATES': {
-        'comment': '100/day',
-        'comment_anon': '20/day',
-        'comment_burst': '5/min',
-    }
-}
-```
-
-### Apply to ViewSet
-
-```python
-from django_comments.drf_integration import get_comment_throttle_classes
-from rest_framework import viewsets
-
-class CommentViewSet(viewsets.ModelViewSet):
-    throttle_classes = get_comment_throttle_classes()
-    # ... rest of viewset
-```
-
-### Custom Rate Limits
-
-```python
-from rest_framework.throttling import UserRateThrottle
-
-class CustomCommentThrottle(UserRateThrottle):
-    scope = 'custom_comment'
-    
-    def allow_request(self, request, view):
-        # Only throttle POST requests
-        if request.method != 'POST':
-            return True
-        return super().allow_request(request, view)
-
-# Use in settings
-DJANGO_COMMENTS_CONFIG = {
-    'API_RATE_LIMIT': 'custom_comment',
-}
-
-REST_FRAMEWORK = {
-    'DEFAULT_THROTTLE_RATES': {
-        'custom_comment': '50/hour',
-    }
-}
-```
-
-## 📄 Pagination
-
-### Standard Pagination
-
-```python
-DJANGO_COMMENTS_CONFIG = {
-    'PAGE_SIZE': 20,
-    'PAGE_SIZE_QUERY_PARAM': 'page_size',
-    'MAX_PAGE_SIZE': 100,
-}
-```
-
-API Usage:
-```
-GET /api/comments/?page=2
-GET /api/comments/?page=1&page_size=50
-```
-
-### Thread-Aware Pagination
-
-Automatically used when `MAX_COMMENT_DEPTH` is set:
-
-```python
-DJANGO_COMMENTS_CONFIG = {
-    'MAX_COMMENT_DEPTH': 3,
-    'PAGE_SIZE': 20,
-}
-```
-
-This paginates root comments and includes all their children.
-
-### Apply to ViewSet
-
-```python
-from django_comments.drf_integration import get_comment_pagination_class
-from rest_framework import viewsets
-
-class CommentViewSet(viewsets.ModelViewSet):
-    pagination_class = get_comment_pagination_class()
-    # ... rest of viewset
-```
-
-## 🔌 API Usage
-
-### REST API Endpoints
-
-```
-GET    /api/comments/                      - List all comments
-POST   /api/comments/                      - Create comment
-GET    /api/comments/{id}/                 - Get comment
-PATCH  /api/comments/{id}/                 - Update comment
-DELETE /api/comments/{id}/                 - Delete comment
-POST   /api/comments/{id}/flag/            - Flag comment
-POST   /api/comments/{id}/approve/         - Approve comment (moderators)
-POST   /api/comments/{id}/reject/          - Reject comment (moderators)
-GET    /api/content/{type}/{id}/comments/  - Get comments for object
-```
-
-### Creating a Comment
-
-```javascript
-// POST /api/comments/
-{
-    "content_type": "blog.post",
-    "object_id": "123",
-    "content": "Great article!",
-    "parent": null  // Optional: ID of parent comment for replies
-}
-
-// Response
-{
-    "id": "uuid-or-int",
-    "content": "Great article!",
-    "formatted_content": "<p>Great article!</p>",  // If formatting enabled
-    "user_info": {
-        "id": 1,
-        "username": "john",
-        "display_name": "John Doe"
-    },
-    "created_at": "2024-01-01T12:00:00Z",
-    "is_public": true,
-    "children_count": 0,
-    "flags_count": 0,
-    // ... more fields
-}
-```
-
-### Listing Comments
-
-```javascript
-// GET /api/comments/?content_type=blog.post&object_id=123
-
-// Response
-{
-    "count": 50,
-    "next": "http://api/comments/?page=2",
-    "previous": null,
-    "results": [
-        {
-            "id": 1,
-            "content": "Great article!",
-            // ... full comment data
-        }
-    ]
-}
-```
-
-### Filtering & Search
-
-```
-GET /api/comments/?content_type=blog.post&object_id=123
-GET /api/comments/?user=5
-GET /api/comments/?created_after=2024-01-01
-GET /api/comments/?is_public=true
-GET /api/comments/?search=django
-GET /api/comments/?ordering=-created_at
-GET /api/comments/?parent=none  # Root comments only
-```
-
-### Flagging a Comment
-
-```javascript
-// POST /api/comments/{id}/flag/
-{
-    "flag_type": "spam",
-    "reason": "This is clearly spam content"
-}
-
-// Response
-{
-    "id": 1,
-    "flag_type": "spam",
-    "reason": "This is clearly spam content",
-    "created_at": "2024-01-01T12:00:00Z"
-}
-```
-
-## 🎨 Django Templates
-
-### Template Tags
-
-Load the template tags:
-
-```django
-{% load comment_tags %}
-```
-
-### Get Comment Count
-
-```django
-{# Get count (uses cache) #}
-<p>{% get_comment_count post %} comments</p>
-
-{# Include non-public comments #}
-<p>{% get_comment_count post public_only=False %} total comments</p>
-```
-
-### Check if Object Has Comments
-
-```django
-{% if post|has_comments %}
-    <a href="#comments">View Comments</a>
-{% endif %}
-```
-
-### Display Comments
-
-```django
-{# Get all comments #}
-{% get_comments_for post as comments %}
-{% for comment in comments %}
-    <div class="comment">
-        <strong>{{ comment.get_user_name }}</strong>
-        <p>{{ comment.content }}</p>
-        <small>{{ comment.created_at }}</small>
-    </div>
-{% endfor %}
-```
-
-### Display Threaded Comments
-
-```django
-{# Get root comments with children prefetched #}
-{% get_root_comments_for post as root_comments %}
-{% for comment in root_comments %}
-    <div class="comment">
-        <strong>{{ comment.get_user_name }}</strong>
-        <p>{{ comment.content }}</p>
-        
-        {# Display replies #}
-        {% for child in comment.children.all %}
-            <div class="reply">
-                <strong>{{ child.get_user_name }}</strong>
-                <p>{{ child.content }}</p>
-            </div>
-        {% endfor %}
-    </div>
-{% endfor %}
-```
-
-### Show Comment Count Widget
-
-```django
-{# Renders django_comments/comment_count.html #}
-{% show_comment_count post %}
-{% show_comment_count post link=False %}
-```
-
-### Show Comment List Widget
-
-```django
-{# Renders django_comments/comment_list.html #}
-{% show_comments post %}
-{% show_comments post max_comments=5 %}
-```
-
-## 🐍 Python Usage
-
-### Get Comment Count
-
-```python
-from django_comments.cache import get_comment_count_for_object
-
-# Get count (uses cache)
-count = get_comment_count_for_object(post, public_only=True)
-```
-
-### Get Comments for Object
-
-```python
-from django_comments.models import Comment
-
-# Optimized query (prevents N+1)
-comments = Comment.objects.for_model(post).optimized_for_list()
-
-# Public comments only
-comments = Comment.objects.for_model(post).public()
-
-# Root comments only
-comments = Comment.objects.for_model(post).root_nodes()
-```
-
-### Create Comment
-
-```python
-from django_comments.models import Comment
-from django.contrib.contenttypes.models import ContentType
-
-content_type = ContentType.objects.get_for_model(post)
-comment = Comment.objects.create(
-    content_type=content_type,
-    object_id=post.pk,
-    user=request.user,
-    content="Great article!"
-)
-```
-
-### Using Signals
-
-```python
-from django.dispatch import receiver
-from django_comments.signals import comment_post_save, comment_flagged
-
-@receiver(comment_post_save)
-def handle_new_comment(sender, comment, created, **kwargs):
-    if created:
-        # Do something with new comment
-        print(f"New comment: {comment.content}")
-
-@receiver(comment_flagged)
-def handle_flagged_comment(sender, flag, comment, user, **kwargs):
-    # Handle flagged content
-    if flag.flag == 'spam':
-        # Auto-hide spam comments
-        comment.is_public = False
-        comment.save()
-```
-
-### Batch Operations
-
-```python
-from django_comments.cache import get_comment_counts_for_objects
-
-# Get counts for multiple objects efficiently
-posts = Post.objects.all()[:20]
-post_ids = [p.id for p in posts]
-counts = get_comment_counts_for_objects(Post, post_ids, public_only=True)
-
-# counts = {post_id: count, ...}
-for post in posts:
-    print(f"{post.title}: {counts.get(post.id, 0)} comments")
-```
-
-### Pre-warming Cache
-
-```python
-from django_comments.cache import warm_comment_cache_for_queryset
-
-# Pre-warm cache for better performance
-posts = Post.objects.all()[:50]
-warm_comment_cache_for_queryset(posts)
-
-# Now getting counts is instant (from cache)
-for post in posts:
-    count = get_comment_count_for_object(post)
-```
-
-## 🔧 Management Commands
-
-### Clean Up Old Comments
-
-```bash
-# Remove comments older than 30 days
-python manage.py cleanup_comments --days 30
-
-# Remove spam comments
-python manage.py cleanup_comments --remove-spam
-
-# Remove non-public comments
-python manage.py cleanup_comments --remove-non-public
-
-# Remove flagged comments
-python manage.py cleanup_comments --remove-flagged
-
-# Dry run (see what would be deleted)
-python manage.py cleanup_comments --days 30 --dry-run
-
-# Verbose output
-python manage.py cleanup_comments --days 30 --verbose
-```
-
-## 🧪 Testing
-
-### Run Tests
-
-```bash
-# Install dev dependencies
-pip install -e ".[dev]"
-
-# Run all tests
-pytest
-
-# Run with coverage
-pytest --cov=django_comments
-
-# Run specific test file
-pytest django_comments/tests/test_api.py
-
-# Run with verbose output
-pytest -v
-
-# Run specific test
-pytest django_comments/tests/test_notifications_complete.py::TestNotifications::test_new_comment_notification
-```
-
-### Test Coverage
-
-```
-Name                                    Stmts   Miss  Cover
------------------------------------------------------------
-django_comments/__init__.py                 3      0   100%
-django_comments/models.py                 150      0   100%
-django_comments/admin.py                   80      0   100%
-django_comments/api/views.py              120      0   100%
-django_comments/api/serializers.py        100      0   100%
-django_comments/notifications.py           90      0   100%
-django_comments/formatting.py              50      0   100%
-django_comments/drf_integration.py         60      0   100%
------------------------------------------------------------
-TOTAL                                     653      0   100%
-```
-
-## 📚 Advanced Topics
-
-### Custom Comment Model
-
-```python
-# Not yet fully supported, but you can extend via proxy:
-from django_comments.models import Comment
-
-class RatedComment(Comment):
-    rating = models.IntegerField(default=0)
-    
-    class Meta:
-        proxy = True
-```
-
-### Celery Integration
-
-```python
-# tasks.py
-from celery import shared_task
-from django_comments.notifications import notify_new_comment
-from django_comments.models import Comment
-
-@shared_task
-def send_comment_notification_async(comment_id):
-    """Send comment notification asynchronously."""
-    comment = Comment.objects.get(pk=comment_id)
-    notify_new_comment(comment)
-
-# signals.py
-from .tasks import send_comment_notification_async
-
-@receiver(comment_post_save)
-def handle_new_comment(sender, comment, created, **kwargs):
-    if created:
-        # Send notification asynchronously
-        send_comment_notification_async.delay(comment.pk)
-```
-
-### GraphQL Integration
-
-```python
-import graphene
-from graphene_django import DjangoObjectType
-from django_comments.models import Comment
-from django_comments.cache import get_comment_count_for_object
-
-class CommentType(DjangoObjectType):
-    class Meta:
-        model = Comment
-
-class PostType(DjangoObjectType):
-    comment_count = graphene.Int()
-    
-    def resolve_comment_count(self, info):
-        return get_comment_count_for_object(self, public_only=True)
-    
-    class Meta:
-        model = Post
-```
-
-### Custom Permissions
-
-```python
-from rest_framework import permissions
-from django_comments.conf import comments_settings
-
-class CustomCommentPermission(permissions.BasePermission):
-    def has_permission(self, request, view):
-        # Custom logic
-        if view.action == 'create':
-            # Only allow verified users to comment
-            return request.user.is_authenticated and request.user.profile.is_verified
-        return True
-```
-
-## 📊 Performance Benchmarks
-
-On a typical blog with 1000 posts and 10,000 comments:
-
-| Operation | Without Optimization | With Optimization | Improvement |
-|-----------|---------------------|-------------------|-------------|
-| List 20 posts with counts | ~500ms (200+ queries) | ~50ms (2-3 queries) | **10x faster** |
-| Display post with comments | ~300ms (50+ queries) | ~30ms (1-2 queries) | **10x faster** |
-| API list endpoint | ~200ms | ~100ms | **2x faster** |
-| Comment creation | ~50ms | ~55ms | **Negligible** |
-
-**Cache hit rates:** Typically 95%+ in production with proper cache warming
-
-## 🔒 Security Features
-
-- ✅ **XSS Protection** - HTML sanitization via bleach
-- ✅ **CSRF Protection** - Django's built-in CSRF
-- ✅ **Rate Limiting** - Prevents spam and DoS attacks
-- ✅ **Content Validation** - Spam and profanity detection
-- ✅ **Permission System** - Fine-grained access control
-- ✅ **SQL Injection Protection** - Django ORM
-- ✅ **Depth Limiting** - Prevents memory exhaustion
-- ✅ **Input Sanitization** - Bleach whitelist
-
-## 📋 Requirements
-
-- Python >= 3.8
-- Django >= 3.2
-- djangorestframework >= 3.12.0
-- django-filter >= 21.1
-
-### Optional Dependencies
-
-```bash
-pip install markdown  # For Markdown formatting
-pip install bleach    # For HTML sanitization
-pip install celery    # For async email notifications
-pip install redis     # For caching and rate limiting
-```
-
-## 🤝 Contributing
-
-Contributions are welcome! Please check out our [Contributing Guide](CONTRIBUTING.md).
-
-## 📄 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## 🆘 Support
-
-- **Issues**: [GitHub Issues](https://github.com/NzeStan/django-reusable-comments/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/NzeStan/django-reusable-comments/discussions)
-- **Documentation**: [Full Documentation](https://django-reusable-comments.readthedocs.io/)
-
-## 📝 Changelog
-
-See [CHANGELOG.md](CHANGELOG.md) for version history and changes.
-
-## 🏆 Credits
-
-Developed and maintained by **Ifeanyi Stanley Nnamani**.
-
-Special thanks to all contributors who have helped improve this package!
+- **280+ Tests** - Comprehensive test coverage
+- **60+ Settings** - Complete configurability
+- **8 Notification Types** - Full email system
+- **GDPR Compliant** - Privacy-first design
+- **Production Ready** - Battle-tested code
 
 ---
 
