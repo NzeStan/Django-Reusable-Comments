@@ -678,9 +678,7 @@ def get_or_create_system_user():
 
 def check_flag_threshold(comment):
     """
-    FIXED: Check if comment has exceeded flag thresholds and take action.
-    
-    Replace your check_flag_threshold() function in utils.py with this complete function.
+    Check if comment has exceeded flag thresholds and take action.
     
     Args:
         comment: Comment instance to check
@@ -689,22 +687,38 @@ def check_flag_threshold(comment):
     - Auto-hidden (based on AUTO_HIDE_THRESHOLD setting)
     - Auto-deleted (based on AUTO_DELETE_THRESHOLD setting)
     - Trigger moderator notification (based on FLAG_NOTIFICATION_THRESHOLD setting)
+    
+    Returns:
+        dict: Dictionary with keys:
+            - 'flag_count': Current flag count
+            - 'auto_hidden': Boolean indicating if comment was auto-hidden
+            - 'notified': Boolean indicating if moderators were notified
+            - 'flag_obj': The most recent flag object (if available)
     """
     from django_comments.models import CommentFlag
-    from django_comments.utils import log_moderation_action, get_or_create_system_user
     from django.contrib.contenttypes.models import ContentType
-    import logging
-    from django_comments.conf import comments_settings
+    from django_comments.utils import log_moderation_action, get_or_create_system_user
     
     logger = logging.getLogger(comments_settings.LOGGER_NAME)
     
     comment_ct = ContentType.objects.get_for_model(comment)
     
-    # CRITICAL FIX: Query flags with proper UUID conversion
-    flag_count = CommentFlag.objects.filter(
+    # Get flag count and most recent flag
+    # CRITICAL FIX: Use 'created_at' not 'created'
+    flags = CommentFlag.objects.filter(
         comment_type=comment_ct,
         comment_id=str(comment.pk)  # CRITICAL: Convert to string
-    ).count()
+    ).order_by('-created_at')  # FIXED: Was '-created', now '-created_at'
+    
+    flag_count = flags.count()
+    most_recent_flag = flags.first() if flags.exists() else None
+    
+    result = {
+        'flag_count': flag_count,
+        'auto_hidden': False,
+        'notified': False,
+        'flag_obj': most_recent_flag
+    }
     
     # Check auto-hide threshold
     auto_hide_threshold = comments_settings.AUTO_HIDE_THRESHOLD
@@ -722,11 +736,15 @@ def check_flag_threshold(comment):
             )
             
             logger.info(f"Auto-hid comment {comment.pk} due to {flag_count} flags")
+            result['auto_hidden'] = True
             
             # Notify moderators if enabled
             if comments_settings.NOTIFY_ON_AUTO_HIDE:
-                from django_comments.tasks import send_auto_hide_notification
-                send_auto_hide_notification.delay(str(comment.pk), flag_count)
+                try:
+                    from django_comments.notifications import notify_auto_hide
+                    notify_auto_hide(comment, flag_count)
+                except Exception as e:
+                    logger.error(f"Error sending auto-hide notification: {e}")
     
     # Check auto-delete threshold
     auto_delete_threshold = comments_settings.AUTO_DELETE_THRESHOLD
@@ -736,11 +754,20 @@ def check_flag_threshold(comment):
             f"({flag_count} flags) but auto-delete is not implemented"
         )
     
-    # Notify moderators at threshold
+    # Notify moderators at flag threshold
     flag_notification_threshold = comments_settings.FLAG_NOTIFICATION_THRESHOLD
     if flag_notification_threshold and flag_count >= flag_notification_threshold:
-        from django_comments.tasks import send_flag_notification
-        send_flag_notification.delay(str(comment.pk), flag_count)
+        if most_recent_flag:
+            try:
+                from django_comments.notifications import notify_moderators_of_flag
+                notify_moderators_of_flag(comment, most_recent_flag, flag_count)
+                result['notified'] = True
+            except Exception as e:
+                logger.error(f"Error sending flag notification: {e}")
+    
+    return result
+
+
 
 
 
