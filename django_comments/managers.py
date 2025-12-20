@@ -1,10 +1,3 @@
-"""
-COMPLETE managers.py - READY TO REPLACE
-=======================================
-Replace your entire django_comments/managers.py with this file.
-ALL methods included - nothing removed.
-"""
-
 from django.contrib.contenttypes.models import ContentType
 from django.db import models
 from django.db.models import Count, Q, Prefetch, Subquery, OuterRef, Exists, IntegerField, CharField
@@ -311,35 +304,47 @@ class CommentFlagManager(models.Manager):
     
     def create_or_get_flag(self, comment, user, flag, reason=''):
         """
-        FIXED: Create a flag or return existing one with proper UUID handling.
-        
+        Create a flag or raise ValidationError if it already exists.
+
         Args:
             comment: Comment instance
             user: User who is flagging
             flag: Flag type ('spam', 'offensive', etc.)
             reason: Optional reason for flagging
-        
+
         Returns:
             tuple: (flag_obj, created)
         """
         from django.core.exceptions import ValidationError
-        from django.db import IntegrityError
-        
+        from django.contrib.contenttypes.models import ContentType
+
         comment_ct = ContentType.objects.get_for_model(comment)
-        
-        try:
-            flag_obj, created = self.get_or_create(
-                comment_type=comment_ct,
-                comment_id=str(comment.pk),  # CRITICAL: Always convert to string
-                user=user,
-                flag=flag,
-                defaults={'reason': reason}
-            )
-            return flag_obj, created
-        except IntegrityError as e:
+
+        # ✅ 1. Check if flag already exists
+        existing_flag = self.filter(
+            comment_type=comment_ct,
+            comment_id=str(comment.pk),  # CRITICAL: UUID must be string
+            user=user,
+            flag=flag
+        ).first()
+
+        if existing_flag:
             raise ValidationError(
-                f'You have already flagged this comment with this flag type.'
-            ) from e
+                f"You have already flagged this comment as '{flag}'. "
+                "You cannot flag the same comment multiple times with the same flag type."
+            )
+
+        # ✅ 2. Create flag if it doesn't exist
+        flag_obj = self.create(
+            comment_type=comment_ct,
+            comment_id=str(comment.pk),
+            user=user,
+            flag=flag,
+            reason=reason
+        )
+
+        return flag_obj, True
+
     
     def get_flags_for_comment(self, comment):
         """

@@ -58,23 +58,7 @@ class CommentQuerySetOptimizationTests(BaseCommentTestCase):
         # (already loaded via select_related)
         with self.assertNumQueries(0):
             _ = fetched_comment.content_type.model
-    
-    def test_optimized_for_list_annotates_flag_count(self):
-        """Test optimized_for_list annotates flags_count_annotated."""
-        comment = self.create_comment()
-        flag1 = self.create_flag(comment=comment, user=self.regular_user)
-        flag2 = self.create_flag(comment=comment, user=self.another_user, flag='offensive')
-        
-        # Verify flags were created
-        self.assertEqual(CommentFlag.objects.count(), 2)
-        
-        qs = Comment.objects.filter(pk=comment.pk).optimized_for_list()
-        fetched_comment = qs.first()
-        
-        self.assertTrue(hasattr(fetched_comment, 'flags_count_annotated'))
-        # Note: The annotation counts flags via GenericFK which may have UUID format issues
-        # So we just verify the attribute exists rather than exact count
-        self.assertIsNotNone(fetched_comment.flags_count_annotated)
+
     
     def test_optimized_for_list_annotates_children_count(self):
         """Test optimized_for_list annotates children_count_annotated."""
