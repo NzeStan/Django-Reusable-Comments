@@ -9,11 +9,10 @@ from ..utils import (
     get_model_from_content_type_string,
     is_comment_content_allowed,
     process_comment_content,
-    apply_automatic_flags,
-    log_moderation_action,
-    get_or_create_system_user,
     process_comment_content,
 )
+from typing import Any
+from drf_spectacular.utils import extend_schema_field
 from ..formatting import render_comment_content 
 from django.contrib.auth import get_user_model
 import re
@@ -256,7 +255,8 @@ class CommentSerializer(serializers.ModelSerializer):
             logger.error(f"Failed to format comment {obj.pk}: {e}")
             return obj.content
 
-    def get_content_object_info(self, obj):
+    @extend_schema_field(serializers.DictField())
+    def get_content_object_info(self, obj) -> dict[str, Any]:
         """
         Get information about the commented object.
         
@@ -284,7 +284,8 @@ class CommentSerializer(serializers.ModelSerializer):
         
         return info
     
-    def get_user_info(self, obj):
+    @extend_schema_field(serializers.DictField(allow_null=True))
+    def get_user_info(self, obj) -> dict | None:
         """
         Get user information using UserSerializer.
         
@@ -297,7 +298,8 @@ class CommentSerializer(serializers.ModelSerializer):
         from django_comments.api.serializers import UserSerializer
         return UserSerializer(obj.user).data
     
-    def get_children(self, obj):
+    @extend_schema_field(serializers.ListField())
+    def get_children(self, obj) -> list:
         """
         Get nested children comments using RecursiveCommentSerializer.
         
