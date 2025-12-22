@@ -59,7 +59,7 @@ Instances of unacceptable behavior may be reported to nnamaniifeanyi10@gmail.com
 ### Prerequisites
 
 Before contributing, ensure you have:
-- Python 3.8+ installed
+- **Python 3.8-3.12** installed
 - Git installed and configured
 - A GitHub account
 - Basic knowledge of Django and Django REST Framework
@@ -115,6 +115,16 @@ pip install -e ".[dev]"
 # - mypy, django-stubs (type checking)
 # - mkdocs, mkdocs-material (documentation)
 # - ipython, ipdb (debugging)
+```
+**Alternative: Using requirements files**
+
+```bash
+# Install production dependencies
+pip install -r requirements.txt
+
+# Install development dependencies  
+pip install -r requirements-dev.txt
+```
 ```
 
 ### 4. Setup Test Database
@@ -901,9 +911,20 @@ Any other relevant information.
 - [ ] Yes, with guidance
 - [ ] No, but I'd like to see it added
 ```
-
 ---
 
+## Publishing (For Maintainers)
+
+If you're a project maintainer preparing to publish a new release to PyPI, please refer to our comprehensive **[Publishing Guide](../PUBLISHING.md)** which covers:
+
+- Pre-release checklist
+- Version number updates
+- Building and testing the package
+- Publishing to TestPyPI and PyPI
+- Post-release steps
+- Troubleshooting common issues
+
+---
 ## Community
 
 ### Communication Channels

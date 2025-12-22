@@ -2,8 +2,8 @@
 
 A **production-grade**, feature-complete Django app for adding sophisticated comment functionality to any model. Built with performance optimization, extensive customization options, email notifications, content formatting, spam detection, GDPR compliance, and full REST API support.
 
-[![Python](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
-[![Django](https://img.shields.io/badge/django-3.2+-green.svg)](https://www.djangoproject.com/)
+[![Python](https://img.shields.io/badge/python-3.8--3.12-blue.svg)](https://www.python.org/downloads/)
+[![Django](https://img.shields.io/badge/django-3.2--5.0-green.svg)](https://www.djangoproject.com/)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Tests](https://img.shields.io/badge/tests-280%2B%20passing-brightgreen.svg)]()
 
@@ -977,6 +977,10 @@ source venv/bin/activate  # On Windows: venv\Scripts\activate
 
 # Install dependencies
 pip install -e ".[dev]"
+
+# Or install using requirements files
+pip install -r requirements.txt
+pip install -r requirements-dev.txt
 
 # Run tests
 python manage.py test django_comments

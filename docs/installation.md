@@ -4,7 +4,7 @@ This guide walks you through installing and configuring `django-reusable-comment
 
 ## Requirements
 
-- **Python**: 3.8+
+- **Python**: 3.8, 3.9, 3.10, 3.11, 3.12
 - **Django**: 3.2, 4.0, 4.1, 4.2, 5.0
 - **Django REST Framework**: 3.14.0+
 - **django-filter**: 23.0+
@@ -15,7 +15,7 @@ This guide walks you through installing and configuring `django-reusable-comment
 - **Markdown**: For Markdown comment formatting
 - **Celery**: For async email notifications
 - **Redis**: For Celery broker (if using async)
-
+See `requirements.txt` for production dependencies and `requirements-dev.txt` for development dependencies.
 ---
 
 ## Installation Steps

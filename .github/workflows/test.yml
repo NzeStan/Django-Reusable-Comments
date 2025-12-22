@@ -12,12 +12,18 @@ jobs:
     strategy:
       max-parallel: 4
       matrix:
-        python-version: [3.8, 3.9, '3.10', '3.11']
-        django-version: [3.2, 4.0, 4.1, 4.2]
+        python-version: [3.8, 3.9, '3.10', '3.11', '3.12']
+        django-version: [3.2, 4.0, 4.1, 4.2, 5.0]
         exclude:
           # Exclude incompatible Python/Django combinations
+          # Python 3.11+ doesn't work with Django 3.2
           - python-version: '3.11'
             django-version: 3.2
+          - python-version: '3.12'
+            django-version: 3.2
+          # Python 3.8 doesn't support Django 5.0
+          - python-version: 3.8
+            django-version: 5.0
 
     steps:
     - uses: actions/checkout@v3
