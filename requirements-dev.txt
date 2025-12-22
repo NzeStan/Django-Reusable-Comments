@@ -1,0 +1,42 @@
+# Development dependencies for django-reusable-comments
+-r requirements.txt
+
+# Optional dependencies
+markdown>=3.4.0
+celery>=5.3.0
+redis>=4.5.0
+
+# Testing
+pytest>=7.4.0
+pytest-django>=4.7.0
+pytest-cov>=4.1.0
+pytest-xdist>=3.5.0
+pytest-sugar>=0.9.7
+factory-boy>=3.3.0
+Faker>=20.0.0
+freezegun>=1.4.0
+responses>=0.24.0
+
+# Code Quality
+black>=23.0.0
+isort>=5.13.0
+ruff>=0.1.0
+mypy>=1.7.0
+django-stubs>=4.2.0
+djangorestframework-stubs>=3.14.0
+
+# Documentation
+mkdocs>=1.5.0
+mkdocs-material>=9.5.0
+mkdocstrings[python]>=0.24.0
+
+# Development Tools
+ipython>=8.18.0
+ipdb>=0.13.13
+django-debug-toolbar>=4.2.0
+django-extensions>=3.2.0
+
+# Build and distribution
+build>=1.0.0
+twine>=4.0.0
+wheel>=0.42.0

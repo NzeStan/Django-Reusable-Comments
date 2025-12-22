@@ -1,7 +1,31 @@
+# Include important documentation files
 include LICENSE
 include README.md
 include CHANGELOG.md
-recursive-include django_comments/locale *
-recursive-include django_comments/templates *
-recursive-include django_comments/static *
-recursive-include docs *
+include pyproject.toml
+include setup.py
+
+# Include locale files for translations
+recursive-include django_comments/locale *.po *.mo
+
+# Include template files
+recursive-include django_comments/templates *.html *.txt
+
+# Include static files (if any)
+recursive-include django_comments/static *.css *.js *.png *.jpg *.svg
+
+# Include documentation
+recursive-include docs *.md *.rst *.txt
+
+# Exclude unnecessary files
+recursive-exclude * __pycache__
+recursive-exclude * *.py[co]
+recursive-exclude * .DS_Store
+recursive-exclude * .gitignore
+recursive-exclude * .gitkeep
+
+# Exclude tests from distribution
+recursive-exclude django_comments/tests *
+exclude .github
+exclude .vscode
+exclude .idea

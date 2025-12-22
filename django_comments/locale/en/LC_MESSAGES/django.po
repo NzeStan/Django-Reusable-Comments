@@ -1,19 +1,23 @@
 # English translations for django-reusable-comments.
-# Copyright (C) 2025 Your Name
+# Copyright (C) 2025 Ifeanyi Stanley Nnamani
 # This file is distributed under the same license as the django-reusable-comments package.
 msgid ""
 msgstr ""
-"Project-Id-Version: django-reusable-comments 0.1.0\n"
-"Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2025-04-26 12:00+0000\n"
-"PO-Revision-Date: 2025-04-26 12:00+0000\n"
-"Last-Translator: Your Name <your.email@example.com>\n"
+"Project-Id-Version: django-reusable-comments 1.0.0\n"
+"Report-Msgid-Bugs-To: nnamaniifeanyi10@gmail.com\n"
+"POT-Creation-Date: 2024-12-21 12:00+0000\n"
+"PO-Revision-Date: 2024-12-21 12:00+0000\n"
+"Last-Translator: Ifeanyi Stanley Nnamani <nnamaniifeanyi10@gmail.com>\n"
 "Language-Team: English <en@example.com>\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 "Language: en\n"
 "Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+# ============================================================================
+# MODEL FIELDS - Comment Model
+# ============================================================================
 
 #: models.py:25
 msgid "ID"
@@ -115,6 +119,10 @@ msgstr "Comment by {user} on {object}"
 msgid "Anonymous"
 msgstr "Anonymous"
 
+# ============================================================================
+# FLAG TYPES - CommentFlag Model
+# ============================================================================
+
 #: models.py:195
 msgid "Spam"
 msgstr "Spam"
@@ -128,12 +136,16 @@ msgid "Inappropriate"
 msgstr "Inappropriate"
 
 #: models.py:198
+msgid "Harassment"
+msgstr "Harassment"
+
+#: models.py:199
 msgid "Other"
 msgstr "Other"
 
 #: models.py:203
-msgid "Comment flag"
-msgstr "Comment flag"
+msgid "Comment to flag"
+msgstr "Comment to flag"
 
 #: models.py:209
 msgid "Flag"
@@ -154,3 +166,363 @@ msgstr "Comment flags"
 #: models.py:223
 msgid "{user} flagged comment {comment} as {flag}"
 msgstr "{user} flagged comment {comment} as {flag}"
+
+# ============================================================================
+# BANNED USER MODEL
+# ============================================================================
+
+#: models.py:250
+msgid "Banned user"
+msgstr "Banned user"
+
+#: models.py:256
+msgid "Ban reason"
+msgstr "Ban reason"
+
+#: models.py:260
+msgid "Banned at"
+msgstr "Banned at"
+
+#: models.py:264
+msgid "Banned until"
+msgstr "Banned until"
+
+#: models.py:268
+msgid "Banned by"
+msgstr "Banned by"
+
+#: models.py:272
+msgid "Banned users"
+msgstr "Banned users"
+
+#: models.py:276
+msgid "{user} is banned"
+msgstr "{user} is banned"
+
+# ============================================================================
+# COMMENT REVISION MODEL
+# ============================================================================
+
+#: models.py:300
+msgid "Original comment"
+msgstr "Original comment"
+
+#: models.py:304
+msgid "Previous content"
+msgstr "Previous content"
+
+#: models.py:308
+msgid "New content"
+msgstr "New content"
+
+#: models.py:312
+msgid "Edited by"
+msgstr "Edited by"
+
+#: models.py:316
+msgid "Edited at"
+msgstr "Edited at"
+
+#: models.py:320
+msgid "Edit reason"
+msgstr "Edit reason"
+
+#: models.py:324
+msgid "Comment revision"
+msgstr "Comment revision"
+
+#: models.py:325
+msgid "Comment revisions"
+msgstr "Comment revisions"
+
+# ============================================================================
+# MODERATION ACTION MODEL
+# ============================================================================
+
+#: models.py:350
+msgid "Approve"
+msgstr "Approve"
+
+#: models.py:351
+msgid "Reject"
+msgstr "Reject"
+
+#: models.py:352
+msgid "Ban user"
+msgstr "Ban user"
+
+#: models.py:353
+msgid "Unban user"
+msgstr "Unban user"
+
+#: models.py:354
+msgid "Delete comment"
+msgstr "Delete comment"
+
+#: models.py:355
+msgid "Flag as spam"
+msgstr "Flag as spam"
+
+#: models.py:360
+msgid "Moderated comment"
+msgstr "Moderated comment"
+
+#: models.py:364
+msgid "Action"
+msgstr "Action"
+
+#: models.py:368
+msgid "Moderator"
+msgstr "Moderator"
+
+#: models.py:372
+msgid "Action reason"
+msgstr "Action reason"
+
+#: models.py:376
+msgid "Action taken at"
+msgstr "Action taken at"
+
+#: models.py:380
+msgid "Moderation action"
+msgstr "Moderation action"
+
+#: models.py:381
+msgid "Moderation actions"
+msgstr "Moderation actions"
+
+# ============================================================================
+# NOTIFICATIONS - Email subjects and messages
+# ============================================================================
+
+#: notifications.py:45
+msgid "New comment on {object}"
+msgstr "New comment on {object}"
+
+#: notifications.py:72
+msgid "New reply to your comment on {object}"
+msgstr "New reply to your comment on {object}"
+
+#: notifications.py:95
+msgid "Your comment on {object} has been approved"
+msgstr "Your comment on {object} has been approved"
+
+#: notifications.py:118
+msgid "Your comment on {object} has been rejected"
+msgstr "Your comment on {object} has been rejected"
+
+#: notifications.py:145
+msgid "New comment pending moderation on {object}"
+msgstr "New comment pending moderation on {object}"
+
+#: notifications.py:172
+msgid "You have been banned from commenting on {site_name}"
+msgstr "You have been banned from commenting on {site_name}"
+
+#: notifications.py:195
+msgid "Your commenting privileges have been restored on {site_name}"
+msgstr "Your commenting privileges have been restored on {site_name}"
+
+#: notifications.py:220
+msgid "Comment flagged for moderation on {object}"
+msgstr "Comment flagged for moderation on {object}"
+
+#: notifications.py:245
+msgid "Comment auto-hidden after {count} flags"
+msgstr "Comment auto-hidden after {count} flags"
+
+# ============================================================================
+# ADMIN - Actions and messages
+# ============================================================================
+
+#: admin.py:85
+msgid "Approve selected comments"
+msgstr "Approve selected comments"
+
+#: admin.py:95
+msgid "{count} comment(s) successfully approved."
+msgstr "{count} comment(s) successfully approved."
+
+#: admin.py:102
+msgid "Reject selected comments"
+msgstr "Reject selected comments"
+
+#: admin.py:112
+msgid "{count} comment(s) successfully rejected."
+msgstr "{count} comment(s) successfully rejected."
+
+#: admin.py:119
+msgid "Mark selected as spam"
+msgstr "Mark selected as spam"
+
+#: admin.py:129
+msgid "{count} comment(s) successfully marked as spam."
+msgstr "{count} comment(s) successfully marked as spam."
+
+#: admin.py:136
+msgid "Delete selected comments"
+msgstr "Delete selected comments"
+
+#: admin.py:146
+msgid "{count} comment(s) successfully deleted."
+msgstr "{count} comment(s) successfully deleted."
+
+# ============================================================================
+# API - Error messages
+# ============================================================================
+
+#: api/serializers.py:55
+msgid "This content type is not allowed for comments."
+msgstr "This content type is not allowed for comments."
+
+#: api/serializers.py:68
+msgid "You are banned from posting comments."
+msgstr "You are banned from posting comments."
+
+#: api/serializers.py:78
+msgid "Maximum comment depth exceeded."
+msgstr "Maximum comment depth exceeded."
+
+#: api/serializers.py:95
+msgid "Content contains profanity."
+msgstr "Content contains profanity."
+
+#: api/serializers.py:105
+msgid "Comment was flagged as spam."
+msgstr "Comment was flagged as spam."
+
+#: api/serializers.py:142
+msgid "Edit time window has expired."
+msgstr "Edit time window has expired."
+
+#: api/serializers.py:148
+msgid "You can only edit your own comments."
+msgstr "You can only edit your own comments."
+
+#: api/views.py:78
+msgid "You have already flagged this comment."
+msgstr "You have already flagged this comment."
+
+#: api/views.py:85
+msgid "Flag limit exceeded. Try again later."
+msgstr "Flag limit exceeded. Try again later."
+
+# ============================================================================
+# MANAGEMENT COMMANDS
+# ============================================================================
+
+#: management/commands/cleanup_comments.py:18
+msgid "Cleanup completed. {count} comments removed."
+msgstr "Cleanup completed. {count} comments removed."
+
+#: management/commands/anonymize_old_comments.py:22
+msgid "Anonymization completed. {count} comments anonymized."
+msgstr "Anonymization completed. {count} comments anonymized."
+
+# ============================================================================
+# FORMS - Validation messages
+# ============================================================================
+
+#: forms.py:32
+msgid "Comment content is required."
+msgstr "Comment content is required."
+
+#: forms.py:45
+msgid "Comment is too long. Maximum length is {max_length} characters."
+msgstr "Comment is too long. Maximum length is {max_length} characters."
+
+#: forms.py:58
+msgid "Email is required for anonymous comments."
+msgstr "Email is required for anonymous comments."
+
+#: forms.py:65
+msgid "Name is required for anonymous comments."
+msgstr "Name is required for anonymous comments."
+
+# ============================================================================
+# GDPR - Data export and deletion
+# ============================================================================
+
+#: gdpr.py:45
+msgid "User data exported successfully"
+msgstr "User data exported successfully"
+
+#: gdpr.py:68
+msgid "User data deleted successfully"
+msgstr "User data deleted successfully"
+
+#: gdpr.py:92
+msgid "User data anonymized successfully"
+msgstr "User data anonymized successfully"
+
+# ============================================================================
+# GENERAL UI - Common strings
+# ============================================================================
+
+msgid "Submit"
+msgstr "Submit"
+
+msgid "Cancel"
+msgstr "Cancel"
+
+msgid "Edit"
+msgstr "Edit"
+
+msgid "Delete"
+msgstr "Delete"
+
+msgid "Reply"
+msgstr "Reply"
+
+msgid "Flag"
+msgstr "Flag"
+
+msgid "Posted by"
+msgstr "Posted by"
+
+msgid "ago"
+msgstr "ago"
+
+msgid "just now"
+msgstr "just now"
+
+msgid "Edited"
+msgstr "Edited"
+
+msgid "Show more"
+msgstr "Show more"
+
+msgid "Show less"
+msgstr "Show less"
+
+msgid "Load more comments"
+msgstr "Load more comments"
+
+msgid "No comments yet"
+msgstr "No comments yet"
+
+msgid "Be the first to comment"
+msgstr "Be the first to comment"
+
+# ============================================================================
+# PROFANITY FILTERING
+# ============================================================================
+
+msgid "This comment contains inappropriate language."
+msgstr "This comment contains inappropriate language."
+
+msgid "Profanity detected and censored."
+msgstr "Profanity detected and censored."
+
+# ============================================================================
+# SPAM DETECTION
+# ============================================================================
+
+msgid "This comment has been flagged as potential spam."
+msgstr "This comment has been flagged as potential spam."
+
+msgid "Spam detected by automated filter."
+msgstr "Spam detected by automated filter."
+
+msgid "This comment is pending review."
+msgstr "This comment is pending review."

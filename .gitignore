@@ -1,51 +1,46 @@
-.env# Python
+# testing
+django-package-test/
+
+# Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
+*$py.class
+
+# C extensions
 *.so
-*.egg
-*.egg-info/
-*.pyo
-*.pyd
-*.pdb
-*.dll
 
-# Virtual environments
-venv/
-.venv/
-env/
-.env/
-ENV/
-*.env
-*.venv
-
-# Django/DRF specific
-*.log
-local_settings.py
-db.sqlite3
-media/
-staticfiles/
-static/
-
-# IDEs and editors
-.vscode/
-.idea/
-*.swp
-*~
-.project
-.pydevproject
-
-# Distribution / Packaging
-dist/
+# Distribution / packaging
+.Python
 build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# PyInstaller
 *.manifest
 *.spec
-.eggs/
-MANIFEST
-pip-wheel-metadata/
-*.egg-info/
 
-# Coverage / Testing
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage reports
 htmlcov/
+.tox/
+.nox/
 .coverage
 .coverage.*
 .cache
@@ -53,15 +48,171 @@ nosetests.xml
 coverage.xml
 *.cover
 *.py,cover
+.hypothesis/
 .pytest_cache/
-.tox/
+cover/
+
+# Translations
+*.mo
+*.pot
+
+# Django stuff:
+*.log
+local_settings.py
+db.sqlite3
+db.sqlite3-journal
+
+# Flask stuff:
+instance/
+.webassets-cache
+
+# Scrapy stuff:
+.scrapy
+
+# Sphinx documentation
+docs/_build/
+docs/_static/
+docs/_templates/
+
+# PyBuilder
+.pybuilder/
+target/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# IPython
+profile_default/
+ipython_config.py
+
+# pyenv
+.python-version
+
+# pipenv
+Pipfile.lock
+
+# poetry
+poetry.lock
+
+# pdm
+.pdm.toml
+
+# PEP 582
+__pypackages__/
+
+# Celery stuff
+celerybeat-schedule
+celerybeat.pid
+
+# SageMath parsed files
+*.sage.py
+
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Spyder project settings
+.spyderproject
+.spyproject
+
+# Rope project settings
+.ropeproject
+
+# mkdocs documentation
+/site
+
+# mypy
 .mypy_cache/
 .dmypy.json
+dmypy.json
+
+# Pyre type checker
 .pyre/
+
+# pytype static type analyzer
 .pytype/
 
-# Docs
-docs/_build/
+# Cython debug symbols
+cython_debug/
 
-# testing
+# IDEs
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+.project
+.pydevproject
+.settings/
+
+# PyCharm
+.idea/
+
+# VS Code
+.vscode/
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# Local development
+*.local
+.local/
+local/
+
+# Django media and static
+media/
+staticfiles/
+static/
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Test databases
+test_*.db
+test.sqlite3
+
+# PyPI
+.pypirc
+
+# Backup files
+*.bak
+*.backup
+*~
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Package testing
 django-package-test/
+test_project/
+example_project/
+
+# Documentation builds
+docs/_build/
+docs/.doctrees/
+
+# Coverage
+.coverage
+htmlcov/
+
+# Pytest
+.pytest_cache/
+
+# Ruff
+.ruff_cache/

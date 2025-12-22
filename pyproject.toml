@@ -5,16 +5,16 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "django-reusable-comments"
 version = "1.0.0"
-description = "A production-grade reusable Django comments app with REST API"
+description = "A production-grade reusable Django comments app with REST API, moderation, spam detection, and GDPR compliance"
 readme = "README.md"
 requires-python = ">=3.8"
 license = {text = "MIT"}
 authors = [
     {name = "Ifeanyi Stanley Nnamani", email = "nnamaniifeanyi10@gmail.com"}
 ]
-keywords = ["django", "comments", "rest-framework", "api", "moderation"]
+keywords = ["django", "comments", "rest-framework", "api", "moderation", "spam-detection", "gdpr"]
 classifiers = [
-    "Development Status :: 4 - Beta",
+    "Development Status :: 5 - Production/Stable",
     "Environment :: Web Environment",
     "Framework :: Django",
     "Framework :: Django :: 3.2",
@@ -45,18 +45,24 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+markdown = [
+    "markdown>=3.4.0",
+]
+celery = [
+    "celery>=5.3.0",
+    "redis>=4.5.0",
+]
 dev = [
     # Testing
     "pytest>=7.4.0",
     "pytest-django>=4.7.0",
     "pytest-cov>=4.1.0",
-    "pytest-xdist>=3.5.0",  # Parallel test execution
-    "pytest-sugar>=0.9.7",  # Better test output
+    "pytest-xdist>=3.5.0",
+    "pytest-sugar>=0.9.7",
     "factory-boy>=3.3.0",
     "Faker>=20.0.0",
-    "freezegun>=1.4.0",  # Time manipulation for tests
-    "responses>=0.24.0",  # Mock HTTP requests
-    
+    "freezegun>=1.4.0",
+    "responses>=0.24.0",
     # Code Quality
     "black>=23.0.0",
     "isort>=5.13.0",
@@ -64,12 +70,10 @@ dev = [
     "mypy>=1.7.0",
     "django-stubs>=4.2.0",
     "djangorestframework-stubs>=3.14.0",
-    
     # Documentation
     "mkdocs>=1.5.0",
     "mkdocs-material>=9.5.0",
     "mkdocstrings[python]>=0.24.0",
-    
     # Development Tools
     "ipython>=8.18.0",
     "ipdb>=0.13.13",
@@ -89,65 +93,36 @@ packages = ["django_comments"]
 include-package-data = true
 
 [tool.setuptools.package-data]
-django_comments = ["templates/**/*", "static/**/*"]
+django_comments = [
+    "locale/**/*",
+    "templates/**/*",
+    "static/**/*",
+]
 
 [tool.pytest.ini_options]
 DJANGO_SETTINGS_MODULE = "django_comments.tests.settings"
 python_files = ["test_*.py", "*_test.py", "tests.py"]
 python_classes = ["Test*", "*Tests"]
 python_functions = ["test_*"]
+addopts = "--strict-markers --tb=short"
 testpaths = ["django_comments/tests"]
-addopts = [
-    "--strict-markers",
-    "--strict-config",
-    "--cov=django_comments",
-    "--cov-report=html",
-    "--cov-report=term-missing:skip-covered",
-    "--cov-branch",
-    "--cov-fail-under=90",
-    "--tb=short",
-    "--reuse-db",
-    "-v",
-]
 markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
     "integration: marks tests as integration tests",
-    "unit: marks tests as unit tests",
-    "api: marks tests that test API endpoints",
-    "models: marks tests that test models",
-    "permissions: marks tests that test permissions",
-    "signals: marks tests that test signals",
-    "utils: marks tests that test utility functions",
-    "admin: marks tests that test admin interface",
-    "security: marks tests that test security features",
-    "performance: marks tests that test performance",
 ]
-filterwarnings = [
-    "ignore::pytest.PytestCollectionWarning",
-    "ignore::DeprecationWarning:factory.builder",
-    "ignore::django.utils.deprecation.RemovedInDjango60Warning",
-]
-
 
 [tool.coverage.run]
 source = ["django_comments"]
 omit = [
     "*/migrations/*",
     "*/tests/*",
-    "*/__pycache__/*",
-    "*/site-packages/*",
-    "setup.py",
+    "*/__init__.py",
 ]
-branch = true
 
 [tool.coverage.report]
-precision = 2
-show_missing = true
-skip_covered = false
 exclude_lines = [
     "pragma: no cover",
     "def __repr__",
-    "def __str__",
     "raise AssertionError",
     "raise NotImplementedError",
     "if __name__ == .__main__.:",
