@@ -1072,60 +1072,43 @@ class CommentViewSet(viewsets.ModelViewSet):
 
 
 
-class ContentObjectCommentsViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
+class ContentObjectCommentsViewSet(
+    mixins.ListModelMixin,
+    mixins.CreateModelMixin,
+    viewsets.GenericViewSet
+):
     """
-    API endpoint for listing comments for a specific object.
-    Optimized for performance with selective prefetching AND cache warming.
-    validates ordering.
+    List / create comments for one concrete object.
+
     """
     serializer_class = CommentSerializer
     permission_classes = [AllowAny]
     pagination_class = get_comment_pagination_class()
-    filter_backends = [filters.OrderingFilter, 
-                       filters.SearchFilter,]
+    filter_backends = [filters.OrderingFilter, filters.SearchFilter]
     search_fields = ['content', 'user_name', 'user__username', 'user__first_name', 'user__last_name']
     ordering_fields = ['created_at', 'updated_at']
     ordering = comments_settings.DEFAULT_SORT
-    
-    def get_ordering(self):
-        """
-        Get ordering with validation against ALLOWED_SORTS.
-        """
-        ordering = self.request.query_params.get('ordering', None)
-        
-        if ordering:
-            allowed_sorts = comments_settings.ALLOWED_SORTS
-            if allowed_sorts and ordering not in allowed_sorts:
-                return [comments_settings.DEFAULT_SORT]
-            return [ordering]
-        
-        return [comments_settings.DEFAULT_SORT]
-    
+
+    # ---------- routing helpers ----------
+    def get_content_type_string(self):
+        return f"{self.kwargs['app_label']}.{self.kwargs['model']}"
+
+    def get_object_id(self):
+        return self.kwargs['object_id']
+
+    # ---------- queryset ----------
     def get_queryset(self):
-        """
-        Get all comments for a specific object with optimizations.
-        """
-        content_type_str = self.kwargs.get('content_type')
-        object_id = self.kwargs.get('object_id')
-        
-        # Get the model from the content type string
-        model = get_model_from_content_type_string(content_type_str)
+        ct_str = self.get_content_type_string()
+        model = get_model_from_content_type_string(ct_str)
         if not model:
             return Comment.objects.none()
-        
-        # Get the content type
+
         content_type = ContentType.objects.get_for_model(model)
-        
-        # Build base queryset
-        queryset = Comment.objects.filter(
+        qs = Comment.objects.filter(
             content_type=content_type,
-            object_id=object_id
-        )
-        queryset = queryset.select_related(
-            'user',
-            'content_type',
-            'parent',
-            'parent__user'
+            object_id=self.get_object_id()
+        ).select_related(
+            'user', 'content_type', 'parent', 'parent__user'
         ).prefetch_related(
             models.Prefetch(
                 'flags',
@@ -1138,27 +1121,44 @@ class ContentObjectCommentsViewSet(mixins.ListModelMixin, viewsets.GenericViewSe
 
         user = self.request.user
         if not user.is_staff and not user.is_superuser:
-            queryset = queryset.filter(is_public=True, is_removed=False)
-        
+            qs = qs.filter(is_public=True, is_removed=False)
+
+        # thread filtering (kept unchanged)
         thread_type = self.request.query_params.get('thread_type', 'tree')
-        
-        if thread_type == 'flat':
-            # Return all comments
-            pass
-        elif thread_type == 'root':
-            # Return only root comments
-            queryset = queryset.filter(parent__isnull=True)
-        else:  # 'tree' is default
-            # For tree view, optionally filter by thread_id
+        if thread_type == 'root':
+            qs = qs.filter(parent__isnull=True)
+        elif thread_type != 'flat':
             thread_id = self.request.query_params.get('thread_id')
             if thread_id:
-                queryset = queryset.filter(thread_id=thread_id)
-        
-        # Apply validated ordering
+                qs = qs.filter(thread_id=thread_id)
+
         ordering = self.get_ordering()
-        queryset = queryset.order_by(*ordering)
-        
-        return queryset
+        return qs.order_by(*ordering)
+
+    # ---------- ordering ----------
+    def get_ordering(self):
+        ordering = self.request.query_params.get('ordering')
+        allowed = comments_settings.ALLOWED_SORTS
+        if allowed and ordering not in allowed:
+            return [comments_settings.DEFAULT_SORT]
+        return [ordering] if ordering else [comments_settings.DEFAULT_SORT]
+
+    # ---------- create ----------
+    def create(self, request, *args, **kwargs):
+        """
+        Front-end only sends `{content: "…"}` (and optionally parent/user_name/user_email).
+        Backend injects content_type & object_id from the URL.
+        """
+        # work on a mutable copy
+        data = request.data.copy()
+        data['content_type'] = self.get_content_type_string()
+        data['object_id'] = self.get_object_id()
+
+        serializer = self.get_serializer(data=data)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+        headers = self.get_success_headers(serializer.data)
+        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
     
     
     def list(self, request, *args, **kwargs):
@@ -1166,8 +1166,8 @@ class ContentObjectCommentsViewSet(mixins.ListModelMixin, viewsets.GenericViewSe
         List comments for a content object with optimized cache warming.
         
         """
-        content_type_str = self.kwargs.get('content_type')
-        object_id = self.kwargs.get('object_id')
+        content_type_str = self.get_content_type_string()
+        object_id = self.get_object_id()
         
         # Warm cache for this content object BEFORE the query
         try:
