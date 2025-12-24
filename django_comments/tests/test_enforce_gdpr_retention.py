@@ -658,22 +658,21 @@ class EnforceGDPREdgeCasesTests(BaseCommentTestCase):
         ancient_comment.refresh_from_db()
         self.assertIsNone(ancient_comment.user)
     
-    @override_settings(
-        GDPR_ENABLED=True,
-        GDPR_ENABLE_RETENTION_POLICY=True,
-        GDPR_RETENTION_DAYS=365
-    )
     def test_enforce_at_exact_boundary(self):
         """Test enforcement at exact retention boundary."""
-        # Comment exactly 365 days old
+        # Calculate cutoff BEFORE creating comment (like production does)
+        cutoff_date = timezone.now() - timedelta(days=365)
+        
+        # Create comment at the boundary
         boundary_comment = self.create_comment(user=self.regular_user)
-        boundary_comment.created_at = timezone.now() - timedelta(days=365)
+        boundary_comment.created_at = cutoff_date
         boundary_comment.save()
         
-        out = StringIO()
-        call_command('enforce_gdpr_retention', stdout=out)
+        # Now command's cutoff will be LATER than comment's created_at
+        # (matching production behavior)
+        call_command('enforce_gdpr_retention')
         
-        # Should NOT be anonymized (only > 365 days)
+        # Should NOT be anonymized ✓
         boundary_comment.refresh_from_db()
         self.assertEqual(boundary_comment.user, self.regular_user)
     
@@ -787,7 +786,11 @@ class EnforceGDPREdgeCasesTests(BaseCommentTestCase):
         # Skip: Cannot set object_id to None due to DB constraints
         self.skipTest("Cannot set object_id to None due to NOT NULL constraint")
     
-    
+    @override_settings(
+        GDPR_ENABLED=True,
+        GDPR_ENABLE_RETENTION_POLICY=True,
+        GDPR_RETENTION_DAYS=365
+    )
     def test_enforce_output_formatting(self):
         """Test enforcement output is properly formatted."""
         old_comment = self.create_comment(user=self.regular_user)

@@ -373,7 +373,7 @@ DJANGO_COMMENTS_CONFIG = {
 }
 ```
 
-For complete configuration reference, see [CONFIGURATION_GUIDE.md](CONFIGURATION_GUIDE.md).
+For complete configuration reference, see [configuration.md](docs/configuration.md).
 
 ---
 

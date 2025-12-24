@@ -32,7 +32,7 @@ DELETE /api/comments/{id}/
 
 ---
 
-### Pattern 2: Object-Specific Comment Endpoint (NEW in v1.0)
+### Pattern 2: Object-Specific Comment Endpoint
 
 **Base URL**: `/api/{app_label}/{model}/{object_id}/comments/`
 
