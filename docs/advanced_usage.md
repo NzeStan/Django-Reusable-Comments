@@ -1191,10 +1191,17 @@ DJANGO_COMMENTS_CONFIG = {
 
 ## Frontend Integration
 
+Django Reusable Comments supports two integration patterns:
+
+1. **Generic endpoint** - Full control, suitable for admin interfaces
+2. **Object-specific endpoint** - Simplified, secure pattern for public frontends (recommended)
+
+---
+
 ### React Integration
 
-```javascript
-// CommentList.jsx
+#### Option 1: Using Generic Endpoint
+```jsx
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 
@@ -1257,12 +1264,93 @@ const CommentList = ({ contentType, objectId }) => {
 };
 
 export default CommentList;
+
+// Usage:
+// <CommentList contentType="blog.post" objectId="123" />
 ```
+
+---
+
+#### Option 2: Using Object-Specific Endpoint (Recommended)
+```jsx
+import React, { useState, useEffect } from 'react';
+import axios from 'axios';
+
+const CommentList = ({ appLabel, model, objectId }) => {
+    const [comments, setComments] = useState([]);
+    const [loading, setLoading] = useState(true);
+    
+    // Construct secure API URL from object metadata
+    const apiUrl = `/api/${appLabel}/${model}/${objectId}/comments/`;
+    
+    useEffect(() => {
+        fetchComments();
+    }, [appLabel, model, objectId]);
+    
+    const fetchComments = async () => {
+        try {
+            const response = await axios.get(apiUrl, {
+                params: {
+                    ordering: '-created_at'
+                }
+            });
+            setComments(response.data.results);
+        } catch (error) {
+            console.error('Error fetching comments:', error);
+        } finally {
+            setLoading(false);
+        }
+    };
+    
+    const handleSubmit = async (content) => {
+        try {
+            const response = await axios.post(
+                apiUrl,
+                {
+                    content: content  // Only content - backend controls metadata
+                },
+                {
+                    headers: {
+                        'Authorization': `Token ${localStorage.getItem('token')}`
+                    }
+                }
+            );
+            setComments([response.data, ...comments]);
+        } catch (error) {
+            console.error('Error posting comment:', error);
+        }
+    };
+    
+    if (loading) return <div>Loading...</div>;
+    
+    return (
+        <div className="comments">
+            <CommentForm onSubmit={handleSubmit} />
+            {comments.map(comment => (
+                <Comment key={comment.id} comment={comment} />
+            ))}
+        </div>
+    );
+};
+
+export default CommentList;
+
+// Usage (note cleaner separation of object metadata):
+// <CommentList appLabel="blog" model="post" objectId="123" />
+```
+
+**Why Option 2 is recommended for public frontends:**
+- ✅ Enhanced security - backend controls all metadata
+- ✅ Simpler component props - clear separation of concerns
+- ✅ Prevents impersonation attacks
+- ✅ Easier to understand URL structure
+
+---
 
 ### Vue.js Integration
 
+#### Option 1: Using Generic Endpoint
 ```vue
-<!-- CommentList.vue -->
 <template>
     <div class="comments">
         <comment-form @submit="addComment" />
@@ -1332,20 +1420,108 @@ export default {
                     content: content,
                     parent: parentId
                 });
-                this.fetchComments(); // Refresh to show new reply
+                this.fetchComments();
             } catch (error) {
                 console.error(error);
             }
         }
     }
 };
+
+// Usage:
+// <CommentList content-type="blog.post" object-id="123" />
 </script>
 ```
 
+---
+
+#### Option 2: Using Object-Specific Endpoint (Recommended)
+```vue
+<template>
+    <div class="comments">
+        <comment-form @submit="addComment" />
+        
+        <div v-if="loading">Loading...</div>
+        
+        <comment-item
+            v-for="comment in comments"
+            :key="comment.id"
+            :comment="comment"
+            @reply="replyToComment"
+        />
+    </div>
+</template>
+
+<script>
+import axios from 'axios';
+
+export default {
+    name: 'CommentList',
+    props: {
+        appLabel: String,
+        model: String,
+        objectId: String
+    },
+    data() {
+        return {
+            comments: [],
+            loading: true
+        };
+    },
+    computed: {
+        apiUrl() {
+            return `/api/${this.appLabel}/${this.model}/${this.objectId}/comments/`;
+        }
+    },
+    mounted() {
+        this.fetchComments();
+    },
+    methods: {
+        async fetchComments() {
+            try {
+                const response = await axios.get(this.apiUrl);
+                this.comments = response.data.results;
+            } catch (error) {
+                console.error(error);
+            } finally {
+                this.loading = false;
+            }
+        },
+        async addComment(content) {
+            try {
+                const response = await axios.post(this.apiUrl, {
+                    content: content  // Only content!
+                });
+                this.comments.unshift(response.data);
+            } catch (error) {
+                console.error(error);
+            }
+        },
+        async replyToComment(parentId, content) {
+            try {
+                const response = await axios.post(this.apiUrl, {
+                    content: content,
+                    parent: parentId
+                });
+                this.fetchComments();
+            } catch (error) {
+                console.error(error);
+            }
+        }
+    }
+};
+
+// Usage:
+// <CommentList app-label="blog" model="post" object-id="123" />
+</script>
+```
+
+---
+
 ### Vanilla JavaScript
 
+#### Option 1: Using Generic Endpoint
 ```javascript
-// comments.js
 class CommentSystem {
     constructor(contentType, objectId, apiUrl = '/api/comments/') {
         this.contentType = contentType;
@@ -1366,18 +1542,23 @@ class CommentSystem {
     }
     
     async createComment(content, parentId = null) {
+        const body = {
+            content_type: this.contentType,
+            object_id: this.objectId,
+            content: content
+        };
+        
+        if (parentId) {
+            body.parent = parentId;
+        }
+        
         const response = await fetch(this.apiUrl, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
                 'Authorization': `Token ${this.token}`
             },
-            body: JSON.stringify({
-                content_type: this.contentType,
-                object_id: this.objectId,
-                content: content,
-                parent: parentId
-            })
+            body: JSON.stringify(body)
         });
         
         if (!response.ok) {
@@ -1389,72 +1570,104 @@ class CommentSystem {
     
     async flagComment(commentId, flag, reason) {
         const response = await fetch(
-            `${this.apiUrl}${commentId}/flag/`,
+            `/api/comments/${commentId}/flag/`,
             {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                     'Authorization': `Token ${this.token}`
                 },
-                body: JSON.stringify({ flag, reason })
+                body: JSON.stringify({ flag_type: flag, reason })
             }
         );
         
         return await response.json();
     }
+}
+
+// Usage:
+// const comments = new CommentSystem('blog.post', '123');
+// await comments.fetchComments();
+// await comments.createComment('Great post!');
+```
+
+---
+
+#### Option 2: Using Object-Specific Endpoint (Recommended)
+```javascript
+class CommentSystem {
+    constructor(appLabel, model, objectId) {
+        this.appLabel = appLabel;
+        this.model = model;
+        this.objectId = objectId;
+        this.apiUrl = `/api/${appLabel}/${model}/${objectId}/comments/`;
+        this.token = localStorage.getItem('authToken');
+    }
     
-    render(comments, container) {
-        container.innerHTML = '';
+    async fetchComments() {
+        const url = new URL(this.apiUrl, window.location.origin);
+        url.searchParams.append('ordering', '-created_at');
         
-        comments.forEach(comment => {
-            const element = this.createCommentElement(comment);
-            container.appendChild(element);
+        const response = await fetch(url);
+        const data = await response.json();
+        return data.results;
+    }
+    
+    async createComment(content, parentId = null) {
+        const body = { content };
+        
+        if (parentId) {
+            body.parent = parentId;
+        }
+        
+        const response = await fetch(this.apiUrl, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Token ${this.token}`
+            },
+            body: JSON.stringify(body)
         });
+        
+        if (!response.ok) {
+            throw new Error('Failed to create comment');
+        }
+        
+        return await response.json();
     }
     
-    createCommentElement(comment) {
-        const div = document.createElement('div');
-        div.className = 'comment';
-        div.id = `comment-${comment.id}`;
+    async flagComment(commentId, flag, reason) {
+        const response = await fetch(
+            `/api/comments/${commentId}/flag/`,
+            {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Token ${this.token}`
+                },
+                body: JSON.stringify({ flag_type: flag, reason })
+            }
+        );
         
-        div.innerHTML = `
-            <div class="comment-header">
-                <strong>${comment.user_info.display_name}</strong>
-                <span class="comment-date">${this.formatDate(comment.created_at)}</span>
-            </div>
-            <div class="comment-content">
-                ${comment.formatted_content}
-            </div>
-            <div class="comment-actions">
-                <button onclick="replyTo('${comment.id}')">Reply</button>
-                <button onclick="flagComment('${comment.id}')">Flag</button>
-            </div>
-        `;
-        
-        return div;
-    }
-    
-    formatDate(dateString) {
-        const date = new Date(dateString);
-        const now = new Date();
-        const seconds = Math.floor((now - date) / 1000);
-        
-        if (seconds < 60) return 'Just now';
-        if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
-        if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
-        return `${Math.floor(seconds / 86400)}d ago`;
+        return await response.json();
     }
 }
 
-// Usage
-const commentSystem = new CommentSystem('blog.post', '123');
-
-document.addEventListener('DOMContentLoaded', async () => {
-    const comments = await commentSystem.fetchComments();
-    const container = document.getElementById('comments-container');
-    commentSystem.render(comments, container);
-});
+// Usage:
+// const comments = new CommentSystem('blog', 'post', '123');
+// await comments.fetchComments();
+// await comments.createComment('Great post!');
 ```
+
+**Comparison:**
+
+| Aspect | Generic Endpoint | Object-Specific Endpoint |
+|--------|-----------------|-------------------------|
+| Constructor params | `contentType, objectId` | `appLabel, model, objectId` |
+| Security | Standard | Enhanced (zero-trust) |
+| Request body | Includes metadata | Content only |
+| URL complexity | Same for all operations | Object-specific |
+| Best for | Admin tools | Public frontends |
 
 ---
 

@@ -67,7 +67,6 @@ INSTALLED_APPS = [
 ### 3. Configure URLs
 
 Add the comment URLs to your project's URL configuration:
-
 ```python
 # urls.py
 
@@ -78,12 +77,21 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     
     # Django Reusable Comments API
-    path('api/comments/', include('django_comments.api.urls')),
+    # Provides TWO endpoint patterns:
+    # 1. Generic: /api/comments/ (full CRUD)
+    # 2. Object-specific: /api/{app_label}/{model}/{object_id}/comments/ (secure create/list)
+    path('api/', include('django_comments.urls')),
     
     # Your app URLs
     path('', include('myapp.urls')),
 ]
 ```
+
+This configuration enables:
+- **Generic endpoint**: `/api/comments/` for full CRUD operations
+- **Object-specific endpoint**: `/api/{app_label}/{model}/{object_id}/comments/` for secure comment creation
+
+**Example URLs**:
 
 ### 4. Run Migrations
 

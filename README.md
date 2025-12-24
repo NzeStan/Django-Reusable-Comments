@@ -133,6 +133,15 @@ A **production-grade**, feature-complete Django app for adding sophisticated com
 
 ---
 
+## 🎯 Choosing Your API Pattern
+
+| Pattern | Best For | Security Model |
+|---------|----------|---------------|
+| **Generic** (`/api/comments/`) | Admin dashboards, backend services, bulk operations | Standard DRF permissions |
+| **Object-Specific** (`/api/{app}/{model}/{id}/comments/`) | Public frontends, mobile apps, untrusted clients | Zero-trust (backend-controlled metadata) |
+
+Both patterns are fully supported. Use object-specific for enhanced security in public-facing applications.
+
 ## 📦 Installation
 
 ### Quick Install
@@ -195,6 +204,53 @@ urlpatterns = [
 ```
 
 ---
+
+
+## ⚡ Quick Start
+
+Django Reusable Comments provides two API patterns:
+
+### Option 1: Generic Endpoint (Admin/Backend Use)
+```javascript
+// List comments
+const response = await fetch('/api/comments/?content_type=blog.post&object_id=123');
+const comments = await response.json();
+
+// Create comment
+await fetch('/api/comments/', {
+    method: 'POST',
+    headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Token YOUR_TOKEN'
+    },
+    body: JSON.stringify({
+        content_type: 'blog.post',
+        object_id: '123',
+        content: 'Great article!'
+    })
+});
+```
+
+### Option 2: Object-Specific Endpoint (Public Frontends - Recommended)
+```javascript
+// List comments for a specific object
+const response = await fetch('/api/blog/post/123/comments/');
+const comments = await response.json();
+
+// Create comment (backend controls metadata)
+await fetch('/api/blog/post/123/comments/', {
+    method: 'POST',
+    headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Token YOUR_TOKEN'
+    },
+    body: JSON.stringify({
+        content: 'Great article!'  // Only content needed!
+    })
+});
+```
+
+**🔒 Security Note**: The object-specific endpoint (`/api/{app_label}/{model}/{object_id}/comments/`) is recommended for public-facing applications as it prevents users from manipulating metadata like `content_type` or `object_id`.
 
 ## ⚙️ Configuration
 
@@ -489,19 +545,6 @@ DJANGO_COMMENTS_CONFIG = {
     # Track all edits
     'TRACK_EDIT_HISTORY': True,
 }
-```
-
-### API Usage
-
-```python
-# Edit a comment
-PATCH /api/comments/{id}/
-{
-    "content": "Updated comment content"
-}
-
-# View edit history (admin only)
-GET /api/comments/{id}/revisions/
 ```
 
 ---

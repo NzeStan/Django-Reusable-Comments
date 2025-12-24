@@ -1497,15 +1497,16 @@ class ContentObjectCommentsViewSetTests(APIViewTestCase):
     def setUp(self):
         super().setUp()
         self.client = APIClient()
-        self.ct_string = f'{self.test_obj._meta.app_label}.{self.test_obj._meta.model_name}'
+        self.app_label = self.test_obj._meta.app_label
+        self.model = self.test_obj._meta.model_name
     
     def test_list_comments_for_object(self):
         """Test listing comments for specific object."""
         comment1 = self.create_comment(content='Comment 1', is_public=True)
         comment2 = self.create_comment(content='Comment 2', is_public=True)
         
-        url = reverse('django_comments_api:content-object-comments', 
-                     args=[self.ct_string, str(self.test_obj.pk)])
+        url = reverse('django_comments_api:content-object-comments',
+            args=[self.app_label, self.model, str(self.test_obj.pk)])
         
         response = self.client.get(url)
         
@@ -1516,7 +1517,7 @@ class ContentObjectCommentsViewSetTests(APIViewTestCase):
         """Test listing comments for non-existent object."""
         fake_uuid = str(uuid.uuid4())
         url = reverse('django_comments_api:content-object-comments',
-                     args=[self.ct_string, fake_uuid])
+            args=[self.app_label, self.model, fake_uuid])
         
         response = self.client.get(url)
         
@@ -1526,21 +1527,22 @@ class ContentObjectCommentsViewSetTests(APIViewTestCase):
     
     def test_list_comments_invalid_content_type(self):
         """Test with invalid content type."""
-        url = reverse('django_comments_api:content-object-comments',
-                     args=['invalid.model', str(self.test_obj.pk)])
-        
+        url = reverse(
+            'django_comments_api:content-object-comments',
+            args=['invalid', 'model', str(self.test_obj.pk)]
+        )
+
         response = self.client.get(url)
-        
-        # Might handle gracefully with empty list (200) or error (400/404)
+
         self.assertIn(response.status_code, [
-            status.HTTP_200_OK,  # Returns empty list
-            status.HTTP_400_BAD_REQUEST,  # Validation error
-            status.HTTP_404_NOT_FOUND  # Content type not found
+            status.HTTP_200_OK,
+            status.HTTP_400_BAD_REQUEST,
+            status.HTTP_404_NOT_FOUND
         ])
-        
-        # If 200, should have empty results
+
         if response.status_code == status.HTTP_200_OK:
             self.assertEqual(len(response.data['results']), 0)
+
     
     def test_list_comments_with_ordering(self):
         """Test ordering comments for object."""
@@ -1548,7 +1550,7 @@ class ContentObjectCommentsViewSetTests(APIViewTestCase):
         new = self.create_comment(content='New', is_public=True)
         
         url = reverse('django_comments_api:content-object-comments',
-                     args=[self.ct_string, str(self.test_obj.pk)])
+            args=[self.app_label, self.model, str(self.test_obj.pk)])
         
         response = self.client.get(url, {'ordering': 'created_at'})
         
@@ -1563,7 +1565,7 @@ class ContentObjectCommentsViewSetTests(APIViewTestCase):
         self.create_comment(is_public=True)
         
         url = reverse('django_comments_api:content-object-comments',
-                     args=[self.ct_string, str(self.test_obj.pk)])
+            args=[self.app_label, self.model, str(self.test_obj.pk)])
         
         response = self.client.get(url, {'ordering': 'invalid_field'})
         
@@ -1576,7 +1578,7 @@ class ContentObjectCommentsViewSetTests(APIViewTestCase):
         self.create_comment(content='JavaScript coding', is_public=True)
         
         url = reverse('django_comments_api:content-object-comments',
-                     args=[self.ct_string, str(self.test_obj.pk)])
+            args=[self.app_label, self.model, str(self.test_obj.pk)])
         
         response = self.client.get(url, {'search': 'Python'})
         
