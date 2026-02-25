@@ -169,9 +169,12 @@ class BaseCommentTestCase(TestCase):
         """
         if comment is None:
             comment = self.create_comment()
-        
+
+        # Flags must reference the Comment model's ContentType, not the commented-on object's CT
+        comment_ct = ContentType.objects.get_for_model(self.Comment)
+
         defaults = {
-            'comment_type': self.content_type,
+            'comment_type': comment_ct,
             'comment_id': str(comment.pk),
             'user': self.moderator,
             'flag': 'spam',

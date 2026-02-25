@@ -915,7 +915,7 @@ Any other relevant information.
 
 ## Publishing (For Maintainers)
 
-If you're a project maintainer preparing to publish a new release to PyPI, please refer to our comprehensive **[Publishing Guide](../PUBLISHING.md)** which covers:
+If you're a project maintainer preparing to publish a new release to PyPI, please refer to our comprehensive **[Publishing Guide](https://github.com/NzeStan/django-reusable-comments/blob/main/PUBLISHING.md)** which covers:
 
 - Pre-release checklist
 - Version number updates

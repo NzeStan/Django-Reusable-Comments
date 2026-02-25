@@ -132,17 +132,13 @@ class CommentFilterSetBasicTests(BaseCommentTestCase):
     def test_filter_by_object_id(self):
         """Test filtering comments by object_id."""
         comment1 = self.create_comment(content='Comment 1')
-        
-        # Create comment for different object
-        from django.contrib.auth.models import Group
-        group = Group.objects.create(name='Test Group')
-        group_ct = ContentType.objects.get_for_model(group)
+
+        # Create comment for a different user (guaranteed different pk)
         comment2 = self.create_comment(
             content='Comment 2',
-            content_type=group_ct,
-            object_id=group.pk
+            object_id=str(self.another_user.pk)
         )
-        
+
         # Filter by test object ID
         filterset = self.get_filterset({'object_id': str(self.test_obj.pk)})
         
@@ -174,10 +170,10 @@ class CommentFilterSetBasicTests(BaseCommentTestCase):
     def test_filter_by_nonexistent_user_returns_empty(self):
         """Test filtering by non-existent user ID."""
         self.create_comment(user=self.regular_user)
-        
-        fake_uuid = str(uuid.uuid4())
-        filterset = self.get_filterset({'user': fake_uuid})
-        
+
+        nonexistent_user_id = '99999'
+        filterset = self.get_filterset({'user': nonexistent_user_id})
+
         self.assertEqual(filterset.qs.count(), 0)
     
     def test_filter_by_is_public(self):

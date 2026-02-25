@@ -77,7 +77,7 @@ class CommentQuerySetOptimizationTests(BaseCommentTestCase):
         qs = Comment.objects.none().optimized_for_list()
         
         self.assertEqual(qs.count(), 0)
-        self.assertQuerysetEqual(qs, [])
+        self.assertQuerySetEqual(qs, [])
 
 
 class CommentQuerySetRelationTests(BaseCommentTestCase):
@@ -745,17 +745,12 @@ class ManagerEdgeCaseTests(BaseCommentTestCase):
         """Test flag manager when comment is deleted."""
         comment = self.create_comment()
         flag = self.create_flag(comment=comment, user=self.regular_user)
-        comment_id = str(comment.pk)
-        
-        # Delete comment
+
+        # Delete comment — Comment.delete() explicitly removes related flags
         comment.delete()
-        
-        # Flag should still exist (orphaned due to GenericFK behavior)
-        self.assertTrue(CommentFlag.objects.filter(pk=flag.pk).exists())
-        
-        # But comment_id field still has the ID
-        flag.refresh_from_db()
-        self.assertEqual(flag.comment_id, comment_id)
+
+        # Flag should also be deleted (cascade via GenericRelation)
+        self.assertFalse(CommentFlag.objects.filter(pk=flag.pk).exists())
     
     def test_search_with_unicode_content(self):
         """Test search handles Unicode content properly."""
@@ -1083,7 +1078,7 @@ class CommentQuerySetPublicOnlyTests(BaseCommentTestCase):
         public_comments = Comment.objects.public_only()
         
         self.assertEqual(public_comments.count(), 0)
-        self.assertQuerysetEqual(public_comments, [])
+        self.assertQuerySetEqual(public_comments, [])
     
     def test_public_only_with_all_states(self):
         """Test public_only correctly handles all comment states."""

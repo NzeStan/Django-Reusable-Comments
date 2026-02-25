@@ -28,6 +28,7 @@ Tests ensure 100% coverage of all notification functionality.
 """
 import uuid
 from datetime import timedelta
+from threading import Thread
 from unittest.mock import Mock, patch, MagicMock, call, ANY
 from io import StringIO
 
@@ -107,25 +108,21 @@ class NotificationServiceInitializationTests(TestCase):
             self.assertTrue(service.use_async)
     
     @override_settings(DJANGO_COMMENTS={'USE_ASYNC_NOTIFICATIONS': True})
-    def test_service_async_initialization_without_celery(self):
-        """Test service falls back to sync when Celery unavailable."""
-        # The actual initialization will log warning if Celery unavailable
-        # We test this by checking the _tasks_available flag
+    def test_service_async_initialization_with_threading(self):
+        """Test service initialises correctly with threading-based async."""
         with patch.object(comments_settings, 'USE_ASYNC_NOTIFICATIONS', True):
             service = CommentNotificationService()
-            
-            # In test environment, Celery is usually not running
-            # Service should handle this gracefully
-            self.assertIsInstance(service._tasks_available, bool)
-    
+
+            # Threading-based async requires no external broker; just check flag
+            self.assertTrue(service.use_async)
+
     @override_settings(DJANGO_COMMENTS={'USE_ASYNC_NOTIFICATIONS': False})
-    def test_service_async_initialization_import_error(self):
-        """Test service handles async disabled gracefully."""
+    def test_service_async_initialization_disabled(self):
+        """Test service initialises correctly with async disabled."""
         with patch.object(comments_settings, 'USE_ASYNC_NOTIFICATIONS', False):
             service = CommentNotificationService()
-            
-            # Should not attempt async initialization
-            self.assertFalse(service._tasks_available)
+
+            self.assertFalse(service.use_async)
     
     def test_global_notification_service_instance_exists(self):
         """Test global notification_service instance exists."""
@@ -148,39 +145,43 @@ class AsyncDispatchTests(TestCase):
         
         self.assertFalse(result)
     
-    def test_dispatch_async_returns_false_when_tasks_unavailable(self):
-        """Test _dispatch_async returns False when tasks unavailable."""
+    def test_dispatch_async_returns_false_when_task_not_found(self):
+        """Test _dispatch_async returns False when task name does not exist."""
         service = CommentNotificationService()
         service.use_async = True
-        service._tasks_available = False
-        
-        result = service._dispatch_async('some_task', 'arg1')
-        
+
+        # A task name that doesn't exist in the tasks module
+        result = service._dispatch_async('nonexistent_task_xyz', 'arg1')
+
         self.assertFalse(result)
-    
-    def test_dispatch_async_calls_task_delay(self):
-        """Test _dispatch_async calls task.delay() when available."""
+
+    def test_dispatch_async_starts_thread(self):
+        """Test _dispatch_async starts a Thread when async is enabled."""
         service = CommentNotificationService()
         service.use_async = True
-        service._tasks_available = True
-        
-        # Mock the actual task dispatch call
-        with patch.object(service, '_dispatch_async', return_value=True) as mock_dispatch:
-            result = service._dispatch_async('some_task', 'arg1', 'arg2', key='value')
-            
-            self.assertTrue(result)
-    
+
+        started_threads = []
+
+        original_init = Thread.__init__
+
+        def fake_start(self):
+            started_threads.append(self)
+
+        with patch.object(Thread, 'start', fake_start):
+            result = service._dispatch_async('notify_new_comment_task', 'some-uuid')
+
+        self.assertTrue(result)
+        self.assertEqual(len(started_threads), 1)
+
     def test_dispatch_async_handles_missing_task(self):
         """Test _dispatch_async handles missing task gracefully."""
         service = CommentNotificationService()
         service.use_async = True
-        service._tasks_available = True
-        
+
         # Call with nonexistent task - should return False
-        with patch.object(service, '_dispatch_async', return_value=False):
-            result = service._dispatch_async('nonexistent_task', 'arg1')
-            
-            self.assertFalse(result)
+        result = service._dispatch_async('nonexistent_task_xyz', 'arg1')
+
+        self.assertFalse(result)
     
     def test_dispatch_async_handles_exception(self):
         """Test _dispatch_async handles task dispatch exception."""

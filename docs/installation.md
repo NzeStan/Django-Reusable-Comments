@@ -12,10 +12,12 @@ This guide walks you through installing and configuring `django-reusable-comment
 
 ## Optional Dependencies
 
-- **Markdown**: For Markdown comment formatting
-- **Celery**: For async email notifications
-- **Redis**: For Celery broker (if using async)
+- **Markdown**: For Markdown comment formatting (`pip install markdown`)
+
+No external task queue or message broker is required. Async email notifications are handled via Python's built-in `threading` module.
+
 See `requirements.txt` for production dependencies and `requirements-dev.txt` for development dependencies.
+
 ---
 
 ## Installation Steps
@@ -26,14 +28,11 @@ See `requirements.txt` for production dependencies and `requirements-dev.txt` fo
 pip install django-reusable-comments
 ```
 
-Or install with optional dependencies:
+Or install with optional Markdown support:
 
 ```bash
 # For Markdown support
 pip install django-reusable-comments markdown
-
-# For async notifications
-pip install django-reusable-comments celery redis
 ```
 
 ### 2. Add to INSTALLED_APPS
@@ -51,14 +50,14 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    
+
     # Third-party apps
     'rest_framework',
     'django_filters',
-    
+
     # Django Reusable Comments
     'django_comments',
-    
+
     # Your apps
     'myapp',
 ]
@@ -75,13 +74,13 @@ from django.urls import path, include
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-    
+
     # Django Reusable Comments API
     # Provides TWO endpoint patterns:
     # 1. Generic: /api/comments/ (full CRUD)
     # 2. Object-specific: /api/{app_label}/{model}/{object_id}/comments/ (secure create/list)
     path('api/', include('django_comments.urls')),
-    
+
     # Your app URLs
     path('', include('myapp.urls')),
 ]
@@ -121,21 +120,21 @@ DJANGO_COMMENTS_CONFIG = {
         'blog.Post',
         'products.Product',
     ],
-    
+
     # Moderation
     'MODERATOR_REQUIRED': False,  # Set to True for approval workflow
-    
+
     # Threading
     'MAX_COMMENT_DEPTH': 3,  # Maximum reply depth
-    
+
     # Content
     'MAX_COMMENT_LENGTH': 3000,
     'ALLOW_ANONYMOUS': False,
     'COMMENT_FORMAT': 'plain',  # 'plain', 'markdown', or 'html'
-    
+
     # Notifications
     'SEND_NOTIFICATIONS': True,
-    
+
     # API
     'API_RATE_LIMIT': '100/day',
     'API_RATE_LIMIT_ANON': '20/day',
@@ -149,7 +148,7 @@ DJANGO_COMMENTS_CONFIG = {
 - [ ] Install package: `pip install django-reusable-comments`
 - [ ] Add `'django_comments'` to `INSTALLED_APPS`
 - [ ] Add `'rest_framework'` and `'django_filters'` to `INSTALLED_APPS`
-- [ ] Include API URLs: `path('api/comments/', include('django_comments.api.urls'))`
+- [ ] Include API URLs: `path('api/', include('django_comments.urls'))`
 - [ ] Run migrations: `python manage.py migrate django_comments`
 - [ ] Configure commentable models in `DJANGO_COMMENTS_CONFIG`
 - [ ] Test API endpoint: `GET /api/comments/`
@@ -181,64 +180,76 @@ DJANGO_COMMENTS_CONFIG = {
 
 ---
 
-## Celery Setup (Optional)
+## Async Notifications (Built-in Threading)
 
-For async email notifications with Celery:
+Async email notifications are built in — no Celery, Redis, or external broker required. When enabled, each notification is dispatched to a Python daemon thread so the HTTP request returns immediately.
 
-### Install Celery and Redis
+Failures are logged (not retried). For guaranteed delivery in high-volume production environments, wrap calls in a persistent task queue of your choice.
 
-```bash
-pip install celery redis
-```
-
-### Configure Celery
+### Enable Async Notifications
 
 ```python
 # settings.py
 
-# Celery Configuration
-CELERY_BROKER_URL = 'redis://localhost:6379/0'
-CELERY_RESULT_BACKEND = 'redis://localhost:6379/0'
-CELERY_ACCEPT_CONTENT = ['json']
-CELERY_TASK_SERIALIZER = 'json'
-CELERY_RESULT_SERIALIZER = 'json'
-CELERY_TIMEZONE = 'UTC'
-
-# Enable async notifications
 DJANGO_COMMENTS_CONFIG = {
-    'USE_ASYNC_NOTIFICATIONS': True,
+    'SEND_NOTIFICATIONS': True,
+    'USE_ASYNC_NOTIFICATIONS': True,  # Uses Python threading (no broker needed)
 }
 ```
 
-### Create Celery App
+That's all — no worker processes to start, no broker to configure.
 
-```python
-# your_project/celery.py
+---
 
-import os
-from celery import Celery
+## Caching Setup (Optional)
 
-os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'your_project.settings')
+django-reusable-comments uses Django's cache framework for comment counts and other frequently accessed data.
 
-app = Celery('your_project')
-app.config_from_object('django.conf:settings', namespace='CELERY')
-app.autodiscover_tasks()
-```
+### Default (LocMemCache)
 
-### Initialize in __init__.py
+Django's default in-process memory cache works out of the box for development and small deployments.
 
-```python
-# your_project/__init__.py
+### Recommended: Database Cache
 
-from .celery import app as celery_app
-
-__all__ = ('celery_app',)
-```
-
-### Start Celery Worker
+For multi-process production deployments (e.g., multiple gunicorn workers), use Django's built-in database cache so all workers share the same cache:
 
 ```bash
-celery -A your_project worker -l info
+# Create the cache table (once)
+python manage.py createcachetable
+```
+
+```python
+# settings.py
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.db.DatabaseCache',
+        'LOCATION': 'django_cache',
+    }
+}
+```
+
+No external services required.
+
+### Memcached or Redis (Optional)
+
+You can use Memcached or Redis if they are already in your stack:
+
+```python
+# Memcached
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.memcached.PyMemcacheCache',
+        'LOCATION': '127.0.0.1:11211',
+    }
+}
+
+# Redis (requires django-redis)
+CACHES = {
+    'default': {
+        'BACKEND': 'django_redis.cache.RedisCache',
+        'LOCATION': 'redis://127.0.0.1:6379/1',
+    }
+}
 ```
 
 ---
@@ -306,7 +317,7 @@ Before deploying to production:
 - [ ] Configure connection pooling
 
 ### Performance
-- [ ] Enable caching (Redis, Memcached)
+- [ ] Enable caching (database cache, Memcached, or Redis)
 - [ ] Configure static files serving
 - [ ] Set up CDN for media files
 - [ ] Enable database query optimization
@@ -385,7 +396,7 @@ Create a test template:
 **Solution**: Make sure app name is `'django_comments'` (with underscore, not hyphen)
 
 **Issue**: API returns 404
-**Solution**: Check URL configuration includes `include('django_comments.api.urls')`
+**Solution**: Check URL configuration includes `include('django_comments.urls')`
 
 **Issue**: Emails not sending
 **Solution**: Check email settings and `SEND_NOTIFICATIONS = True`
@@ -395,7 +406,7 @@ Create a test template:
 
 ### Getting Help
 
-- **Documentation**: [https://django-reusable-comments.readthedocs.io/](https://django-reusable-comments.readthedocs.io/)
+- **Documentation**: [https://github.com/NzeStan/django-reusable-comments/blob/main/docs/installation.md](https://github.com/NzeStan/django-reusable-comments/blob/main/docs/installation.md)
 - **Issues**: [https://github.com/NzeStan/django-reusable-comments/issues](https://github.com/NzeStan/django-reusable-comments/issues)
 - **Discussions**: [https://github.com/NzeStan/django-reusable-comments/discussions](https://github.com/NzeStan/django-reusable-comments/discussions)
 
@@ -404,7 +415,7 @@ Create a test template:
 ## Next Steps
 
 After installation, check out:
-- [Configuration Guide](configuration.md) - Complete settings reference
-- [API Reference](api_reference.md) - REST API documentation
-- [Advanced Usage](advanced_usage.md) - Advanced features and patterns
-- [Contributing](contributing.md) - Contribute to the project
+- [Configuration Guide](https://github.com/NzeStan/django-reusable-comments/blob/main/docs/configuration.md) - Complete settings reference
+- [API Reference](https://github.com/NzeStan/django-reusable-comments/blob/main/docs/api_reference.md) - REST API documentation
+- [Advanced Usage](https://github.com/NzeStan/django-reusable-comments/blob/main/docs/advanced_usage.md) - Advanced features and patterns
+- [Contributing](https://github.com/NzeStan/django-reusable-comments/blob/main/docs/contributing.md) - Contribute to the project

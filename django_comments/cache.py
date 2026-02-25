@@ -180,14 +180,20 @@ def invalidate_comment_cache(content_object):
 def invalidate_comment_cache_by_comment(comment):
     """
     Invalidate caches based on a comment instance.
-    
+
     Args:
         comment: Comment instance
     """
-    if comment.content_object:
-        invalidate_comment_cache(comment.content_object)
+    try:
+        content_object = comment.content_object
+    except (ValueError, TypeError):
+        # object_id format is incompatible with the content type's pk field
+        content_object = None
+
+    if content_object:
+        invalidate_comment_cache(content_object)
     else:
-        # If content_object is None (deleted), clear by content_type and object_id
+        # If content_object is None (deleted or invalid id), clear by content_type and object_id
         ct = comment.content_type
         cache_keys = [
             get_cache_key('count', f"{ct.app_label}.{ct.model}", comment.object_id),

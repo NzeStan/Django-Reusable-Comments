@@ -562,42 +562,36 @@ class CommentFlagDeletionTests(BaseCommentTestCase):
     Test CommentFlag deletion behavior.
     """
     
-    def test_delete_comment_leaves_orphaned_flags(self):
+    def test_delete_comment_deletes_related_flags(self):
         """
-        Test that deleting comment leaves orphaned flags.
-        
-        Django's GenericForeignKey does NOT support automatic CASCADE deletion.
-        Flags remain orphaned after comment deletion (expected behavior).
+        Test that deleting a comment also deletes its related flags.
+
+        Comment.delete() explicitly calls self.flags.all().delete(), and the
+        GenericRelation on Comment cascades deletion to CommentFlag objects.
         """
         comment = self.create_comment()
         flag1 = self.create_flag(comment=comment, user=self.moderator)
         flag2 = self.create_flag(comment=comment, user=self.admin_user)
         comment_id = str(comment.pk)
-        
+
         # Delete the comment
         comment.delete()
-        
+
         # Comment should be deleted
         self.assertFalse(
             self.Comment.objects.filter(pk=comment_id).exists(),
             "Comment should be deleted"
         )
-        
-        # Flags remain (GenericForeignKey doesn't cascade)
-        self.assertTrue(
+
+        # Flags are also deleted (Comment.delete() explicitly removes them)
+        self.assertFalse(
             self.CommentFlag.objects.filter(pk=flag1.pk).exists(),
-            "Flag1 should remain after comment deletion (GenericFK behavior)"
+            "Flag1 should be deleted along with the comment"
         )
-        self.assertTrue(
+        self.assertFalse(
             self.CommentFlag.objects.filter(pk=flag2.pk).exists(),
-            "Flag2 should remain after comment deletion (GenericFK behavior)"
+            "Flag2 should be deleted along with the comment"
         )
-        
-        # Verify flags still point to the now-deleted comment ID
-        fresh_flag1 = self.CommentFlag.objects.get(pk=flag1.pk)
-        fresh_flag2 = self.CommentFlag.objects.get(pk=flag2.pk)
-        self.assertEqual(fresh_flag1.comment_id, comment_id)
-        self.assertEqual(fresh_flag2.comment_id, comment_id)
 
     
     def test_delete_user_sets_flag_user_to_null(self):

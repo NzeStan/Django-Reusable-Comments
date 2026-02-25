@@ -17,11 +17,10 @@ This guide outlines the steps to publish django-reusable-comments to PyPI.
 ### 1. Update Version Numbers
 
 Update version in these files:
-- [ ] `setup.py` (line 14)
-- [ ] `pyproject.toml` (line 6)
-- [ ] `setup.cfg` (line 2)
-- [ ] `django_comments/__init__.py` (add `__version__ = "1.0.0"`)
-- [ ] `CHANGELOG.md` (update release date)
+- [ ] `pyproject.toml` (`version = "..."`)
+- [ ] `setup.cfg` (`version = ...`)
+- [ ] `django_comments/__init__.py` (`__version__ = "..."`)
+- [ ] `CHANGELOG.md` (add new section with release date)
 
 ### 2. Run All Tests
 

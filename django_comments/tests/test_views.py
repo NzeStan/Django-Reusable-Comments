@@ -1455,14 +1455,14 @@ class BannedUserViewSetTests(APIViewTestCase):
     def test_create_ban_nonexistent_user_fails(self):
         """Test banning non-existent user fails."""
         self.client.force_authenticate(user=self.moderator)
-        
-        fake_uuid = str(uuid.uuid4())
+
+        # Use a non-existent integer ID (User model uses integer pk)
         data = {
-            'user_id': fake_uuid,
+            'user_id': '99999',
             'reason': 'Testing'
         }
         response = self.client.post(self.url, data, format='json')
-        
+
         # Could be 404 (user not found) or 400 (validation error)
         self.assertIn(response.status_code, [status.HTTP_404_NOT_FOUND, status.HTTP_400_BAD_REQUEST])
     

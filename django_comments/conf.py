@@ -105,10 +105,11 @@ DEFAULTS = {
     # Enable email notifications
     'SEND_NOTIFICATIONS': False,
     
-    # Use Celery for async notifications (requires celery to be installed)
-    # When True, notifications are sent asynchronously via Celery tasks
-    # When False (default), notifications are sent synchronously
-    # Gracefully falls back to sync if Celery is not available
+    # Use background threads for async notifications
+    # When True, each notification is dispatched to a daemon Thread so the
+    # HTTP request returns immediately (fire-and-forget; failures are logged).
+    # When False (default), notifications are sent synchronously.
+    # No external task queue or broker is required.
     'USE_ASYNC_NOTIFICATIONS': False,
     
     # Email subject template (can use {object} placeholder)

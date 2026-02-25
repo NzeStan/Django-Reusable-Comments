@@ -211,11 +211,11 @@ DJANGO_COMMENTS_CONFIG = {
 DJANGO_COMMENTS_CONFIG = {
     # Enable email notifications
     'SEND_NOTIFICATIONS': False,
-    
-    # Use Celery for async notifications (requires celery to be installed)
-    # When True, notifications are sent asynchronously via Celery tasks
-    # When False (default), notifications are sent synchronously
-    # Gracefully falls back to sync if Celery is not available
+
+    # Use background threads for async notifications (no external broker needed)
+    # When True, each notification is dispatched to a daemon Thread so the
+    # HTTP request returns immediately (fire-and-forget; failures are logged).
+    # When False (default), notifications are sent synchronously.
     'USE_ASYNC_NOTIFICATIONS': False,
     
     # Email subject template (can use {object} placeholder)
@@ -254,7 +254,7 @@ DJANGO_COMMENTS_CONFIG = {
 7. **User Unban** - Sent when ban is lifted
 8. **Flag Alert** - Sent when comment is flagged
 
-**Async Notifications with Celery:**
+**Async Notifications (built-in threading):**
 ```python
 # settings.py
 DJANGO_COMMENTS_CONFIG = {
@@ -262,8 +262,8 @@ DJANGO_COMMENTS_CONFIG = {
     'USE_ASYNC_NOTIFICATIONS': True,
 }
 
-# Celery will automatically be used if available
-# Falls back to synchronous sending if Celery is not configured
+# No Celery or Redis required — uses Python's threading.Thread under the hood.
+# Each notification is dispatched in a daemon thread; failures are logged.
 ```
 
 ---
@@ -283,7 +283,7 @@ DJANGO_COMMENTS_CONFIG = {
 # Run cleanup manually
 python manage.py cleanup_comments
 
-# Or schedule in cron/celery
+# Or schedule via cron
 0 2 * * * python manage.py cleanup_comments  # Daily at 2 AM
 ```
 
@@ -433,6 +433,20 @@ DJANGO_COMMENTS_CONFIG = {
 - Comment counts per object
 - Thread structures
 - Query results
+
+**Recommended cache backend for production** (no external services required):
+
+```python
+# settings.py — create the table first: python manage.py createcachetable
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.db.DatabaseCache',
+        'LOCATION': 'django_cache',
+    }
+}
+```
+
+Memcached or Redis also work if already in your stack.
 
 ---
 
@@ -718,7 +732,7 @@ anonymize_user_data(user)
 'GDPR_ENABLE_RETENTION_POLICY': True,
 'GDPR_RETENTION_DAYS': 365,
 
-# Run via management command or celery
+# Run via management command or cron
 python manage.py anonymize_old_comments
 ```
 

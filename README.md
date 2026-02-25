@@ -9,7 +9,7 @@ A **production-grade**, feature-complete Django app for adding sophisticated com
 
 ## ⚡ What's New in v1.0
 
-- 📧 **8 Email Notification Types** - Beautiful HTML templates with async Celery support
+- 📧 **8 Email Notification Types** - Beautiful HTML templates with async threading support (no broker needed)
 - 🎨 **Content Formatting** - Plain text, Markdown, and HTML with XSS protection
 - 🛡️ **Advanced Spam Detection** - ML-ready with custom detector callbacks
 - ⏱️ **3-Tier Rate Limiting** - DRF integration with user/anon/burst protection
@@ -83,8 +83,8 @@ A **production-grade**, feature-complete Django app for adding sophisticated com
   8. Flag threshold notifications
 
 - ⚡ **Async Support**
-  - Celery integration (optional)
-  - Graceful fallback to sync
+  - Built-in threading (no broker or external service needed)
+  - Fire-and-forget daemon threads; failures logged
   - Beautiful HTML email templates
 
 ### API Features
@@ -152,7 +152,7 @@ pip install django-reusable-comments
 
 # Install optional dependencies
 pip install markdown bleach  # For formatting support
-pip install celery  # For async notifications (optional)
+pip install markdown  # For Markdown formatting (optional)
 ```
 
 ### Add to INSTALLED_APPS
@@ -341,7 +341,7 @@ DJANGO_COMMENTS_CONFIG = {
     
     # Notifications
     'SEND_NOTIFICATIONS': True,
-    'USE_ASYNC_NOTIFICATIONS': True,  # Requires Celery
+    'USE_ASYNC_NOTIFICATIONS': True,  # Uses built-in threading (no broker needed)
     'NOTIFY_ON_FLAG': True,
     'NOTIFY_ON_AUTO_HIDE': True,
     
@@ -399,19 +399,17 @@ EMAIL_HOST_USER = 'your-email@gmail.com'
 EMAIL_HOST_PASSWORD = 'your-password'
 ```
 
-### Async Notifications with Celery
+### Async Notifications (Built-in Threading)
 
 ```python
 # settings.py
 
 DJANGO_COMMENTS_CONFIG = {
     'SEND_NOTIFICATIONS': True,
-    'USE_ASYNC_NOTIFICATIONS': True,
+    'USE_ASYNC_NOTIFICATIONS': True,  # dispatches in a daemon Thread
 }
 
-# Celery configuration
-CELERY_BROKER_URL = 'redis://localhost:6379/0'
-CELERY_RESULT_BACKEND = 'redis://localhost:6379/0'
+# No Celery or Redis needed — works out of the box.
 ```
 
 ### Custom Email Templates
@@ -944,12 +942,18 @@ DJANGO_COMMENTS_CONFIG = {
 
 ### Caching
 
+Use Django's built-in database cache (no external service required):
+
+```bash
+python manage.py createcachetable
+```
+
 ```python
 # settings.py
 CACHES = {
     'default': {
-        'BACKEND': 'django.core.cache.backends.redis.RedisCache',
-        'LOCATION': 'redis://127.0.0.1:6379/1',
+        'BACKEND': 'django.core.cache.backends.db.DatabaseCache',
+        'LOCATION': 'django_cache',
     }
 }
 
@@ -957,6 +961,8 @@ DJANGO_COMMENTS_CONFIG = {
     'CACHE_TIMEOUT': 3600,  # 1 hour
 }
 ```
+
+Memcached or Redis also work if already in your stack.
 
 ### Database Optimization
 
@@ -973,7 +979,7 @@ comments = Comment.objects.select_related('user', 'content_type').filter(
 ### Async Notifications
 
 ```python
-# Use Celery for async email sending
+# Uses built-in threading — no broker needed
 DJANGO_COMMENTS_CONFIG = {
     'USE_ASYNC_NOTIFICATIONS': True,
 }
@@ -1005,7 +1011,7 @@ We love contributions! Here's how to get started:
    ```
 7. **Open a Pull Request**
 
-Please check out our [Contributing Guide](CONTRIBUTING.md) for more details.
+Please check out our [Contributing Guide](https://github.com/NzeStan/django-reusable-comments/blob/main/docs/contributing.md) for more details.
 
 ### Development Setup
 
@@ -1026,7 +1032,7 @@ pip install -r requirements.txt
 pip install -r requirements-dev.txt
 
 # Run tests
-python manage.py test django_comments
+pytest
 ```
 
 ---
@@ -1039,7 +1045,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 🆘 Support
 
-- **Documentation**: [Full Documentation](https://django-reusable-comments.readthedocs.io/)
+- **Documentation**: [Installation](https://github.com/NzeStan/django-reusable-comments/blob/main/docs/installation.md) · [Configuration](https://github.com/NzeStan/django-reusable-comments/blob/main/docs/configuration.md) · [API Reference](https://github.com/NzeStan/django-reusable-comments/blob/main/docs/api_reference.md) · [Advanced Usage](https://github.com/NzeStan/django-reusable-comments/blob/main/docs/advanced_usage.md)
 - **Issues**: [GitHub Issues](https://github.com/NzeStan/django-reusable-comments/issues)
 - **Discussions**: [GitHub Discussions](https://github.com/NzeStan/django-reusable-comments/discussions)
 
@@ -1047,7 +1053,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 📝 Changelog
 
-See [CHANGELOG.md](CHANGELOG.md) for version history and changes.
+See [CHANGELOG.md](https://github.com/NzeStan/django-reusable-comments/blob/main/CHANGELOG.md) for version history and changes.
 
 ---
 

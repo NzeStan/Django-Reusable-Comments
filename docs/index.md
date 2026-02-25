@@ -33,7 +33,7 @@
 ### Email Notifications 📧
 - 8 notification types (new comment, reply, approval, rejection, ban, etc.)
 - Beautiful HTML email templates
-- Async support via Celery with graceful fallback
+- Async support via built-in threading (no broker required)
 - Per-notification-type configuration
 
 ### Content & Security 🎨
@@ -236,7 +236,7 @@ POST /api/comments/bulk_approve/
 
 #### Async Support
 ```python
-'USE_ASYNC_NOTIFICATIONS': True,  # Requires Celery
+'USE_ASYNC_NOTIFICATIONS': True,  # Uses built-in threading (no broker needed)
 ```
 
 ### GDPR Compliance
@@ -264,19 +264,19 @@ anonymize_user_data(user)
 ## Documentation
 
 ### Getting Started
-- **[Installation Guide](installation.md)** - Step-by-step installation and setup
-- **[Configuration Guide](configuration.md)** - Complete settings reference (60+ settings)
+- **[Installation Guide](https://github.com/NzeStan/django-reusable-comments/blob/main/docs/installation.md)** - Step-by-step installation and setup
+- **[Configuration Guide](https://github.com/NzeStan/django-reusable-comments/blob/main/docs/configuration.md)** - Complete settings reference (60+ settings)
 - **[Quick Start Examples](#quick-start)** - Get up and running in minutes
 
 ### Core Documentation
-- **[API Reference](api_reference.md)** - Complete REST API documentation
-- **[Advanced Usage](advanced_usage.md)** - Advanced features and patterns
-- **[Contributing](contributing.md)** - Contribution guidelines
+- **[API Reference](https://github.com/NzeStan/django-reusable-comments/blob/main/docs/api_reference.md)** - Complete REST API documentation
+- **[Advanced Usage](https://github.com/NzeStan/django-reusable-comments/blob/main/docs/advanced_usage.md)** - Advanced features and patterns
+- **[Contributing](https://github.com/NzeStan/django-reusable-comments/blob/main/docs/contributing.md)** - Contribution guidelines
 
 ### Feature Guides
 - **Moderation** - Approval workflows, auto-moderation, ban system
 - **Spam Detection** - Word-based and ML-based spam filtering
-- **Email Notifications** - Setup, templates, async with Celery
+- **Email Notifications** - Setup, templates, async with threading
 - **GDPR Compliance** - Data export, deletion, anonymization
 - **Template Tags** - Django template integration
 - **Signals** - Extending functionality with signals
@@ -413,10 +413,11 @@ cache_key = f'comment_count_{obj_id}'
 
 ### Async Operations
 ```python
-# Celery tasks for email notifications
-from django_comments.tasks import send_comment_notification
-
-send_comment_notification.delay(comment.pk)
+# Async notifications use built-in threading — enable in settings:
+DJANGO_COMMENTS_CONFIG = {
+    'SEND_NOTIFICATIONS': True,
+    'USE_ASYNC_NOTIFICATIONS': True,  # dispatches in a daemon Thread
+}
 ```
 
 ### Database Considerations
@@ -547,7 +548,7 @@ MIT License - see [LICENSE](https://github.com/NzeStan/django-reusable-comments/
 - [Django REST Framework](https://www.django-rest-framework.org/) - API framework
 - [django-filter](https://django-filter.readthedocs.io/) - Filtering support
 - [bleach](https://bleach.readthedocs.io/) - HTML sanitization
-- [Celery](https://docs.celeryproject.org/) - Async task queue
+- [Python threading](https://docs.python.org/3/library/threading.html) - Built-in async task dispatch
 
 ---
 

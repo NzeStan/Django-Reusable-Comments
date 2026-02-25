@@ -690,11 +690,12 @@ class CommentEdgeCaseTests(BaseCommentTestCase):
     
     def test_comment_on_non_existent_object(self):
         """Test commenting on non-existent object still saves."""
-        fake_uuid = str(uuid.uuid4())
-        
+        # Use a non-existent integer ID (User model uses integer pk)
+        nonexistent_id = '99999'
+
         comment = self.Comment.objects.create(
             content_type=self.content_type,
-            object_id=fake_uuid,
+            object_id=nonexistent_id,
             user=self.regular_user,
             content='Comment on non-existent object'
         )
@@ -872,35 +873,32 @@ class CommentDeletionTests(BaseCommentTestCase):
         self.assertTrue(self.Comment.objects.filter(pk=root.pk).exists())
         self.assertTrue(self.Comment.objects.filter(pk=child2.pk).exists())
     
-    def test_delete_comment_with_flags_leaves_orphaned_flags(self):
+    def test_delete_comment_with_flags_deletes_flags(self):
         """
-        Test that deleting comment leaves associated flags orphaned.
-        
-        Django's GenericForeignKey does NOT support automatic CASCADE deletion.
+        Test that deleting a comment also deletes its associated flags.
+
+        Comment.delete() explicitly calls self.flags.all().delete(), and the
+        GenericRelation on Comment cascades deletion to CommentFlag objects.
         """
         comment = self.create_comment()
         flag = self.create_flag(comment=comment)
         comment_id = str(comment.pk)
         flag_id = flag.pk
-        
+
         # Delete the comment
         comment.delete()
-        
+
         # Comment should be deleted
         self.assertFalse(
             self.Comment.objects.filter(pk=comment_id).exists(),
             "Comment should be deleted"
         )
-        
-        # Flag remains (GenericForeignKey doesn't cascade)
-        self.assertTrue(
+
+        # Flag is also deleted (Comment.delete() explicitly removes flags)
+        self.assertFalse(
             self.CommentFlag.objects.filter(pk=flag_id).exists(),
-            "Flag should remain after comment deletion (GenericFK behavior)"
+            "Flag should be deleted along with the comment"
         )
-        
-        # Verify flag still references the deleted comment ID
-        orphaned_flag = self.CommentFlag.objects.get(pk=flag_id)
-        self.assertEqual(orphaned_flag.comment_id, comment_id)
 
 
 

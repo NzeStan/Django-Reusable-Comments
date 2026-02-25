@@ -114,7 +114,7 @@ class CleanupByDaysTests(BaseCommentTestCase):
             self.Comment.objects.filter(pk=old_public.pk).exists()
         )
     
-    @override_settings(CLEANUP_AFTER_DAYS=30)
+    @override_settings(DJANGO_COMMENTS_CONFIG={'CLEANUP_AFTER_DAYS': 30})
     def test_cleanup_uses_setting_default(self):
         """Test cleanup uses CLEANUP_AFTER_DAYS setting as default."""
         old_comment = self.create_comment(is_public=False)
@@ -659,8 +659,8 @@ class CleanupEdgeCasesTests(BaseCommentTestCase):
         call_command('cleanup_comments', '--days=90', stdout=out)
         
         output = out.getvalue()
-        self.assertIn('0', output)
-    
+        self.assertIn('No comments to clean up', output)
+
     def test_cleanup_with_unicode_content(self):
         """Test cleanup with Unicode content."""
         comment = self.create_comment(
@@ -810,4 +810,4 @@ class CleanupEdgeCasesTests(BaseCommentTestCase):
         
         # Should indicate nothing to clean up
         output2 = out2.getvalue()
-        self.assertIn('0', output2)
+        self.assertIn('No comments to clean up', output2)

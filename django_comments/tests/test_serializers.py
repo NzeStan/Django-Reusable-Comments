@@ -138,7 +138,7 @@ class CommentSerializerSerializationTests(BaseCommentTestCase):
         self.assertEqual(str(data['id']), str(comment.pk))
         self.assertEqual(data['content'], 'Test comment')
         self.assertIn('user_info', data)
-        self.assertEqual(data['user_info']['id'], str(comment.user.pk))
+        self.assertEqual(data['user_info']['id'], comment.user.pk)
         self.assertIn('formatted_content', data)
     
     def test_serialize_comment_with_unicode(self):

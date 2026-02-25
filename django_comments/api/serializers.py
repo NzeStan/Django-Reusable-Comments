@@ -577,7 +577,30 @@ class CommentSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError({
                     'object_id': _("This field is required for creating comments")
                 })
-        
+
+            # Validate that object_id format is compatible with the content type's pk field
+            content_type_str = data.get('content_type')
+            object_id = data.get('object_id')
+            if content_type_str and object_id:
+                try:
+                    model = get_model_from_content_type_string(content_type_str)
+                    if model:
+                        from django.contrib.contenttypes.models import ContentType as CT
+                        from django.core.exceptions import ObjectDoesNotExist
+                        ct = CT.objects.get_for_model(model)
+                        try:
+                            ct.get_object_for_this_type(pk=object_id)
+                        except ObjectDoesNotExist:
+                            pass  # Valid format, object just doesn't exist — OK
+                        except (ValueError, TypeError):
+                            raise serializers.ValidationError({
+                                'object_id': _("Invalid object_id for the given content_type.")
+                            })
+                except serializers.ValidationError:
+                    raise
+                except Exception:
+                    pass  # Other errors are handled elsewhere
+
         return data
     
     def create(self, validated_data):

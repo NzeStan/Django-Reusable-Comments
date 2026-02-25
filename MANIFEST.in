@@ -2,8 +2,9 @@
 include LICENSE
 include README.md
 include CHANGELOG.md
+include CONTRIBUTING.md
 include pyproject.toml
-include setup.py
+include setup.cfg
 
 # Include locale files for translations
 recursive-include django_comments/locale *.po *.mo

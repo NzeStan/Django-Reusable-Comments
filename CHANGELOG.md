@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2026-02-24
+
+### Changed
+
+- **Async notifications now use Python's built-in `threading.Thread`** — Celery and Redis are no longer required or referenced. Each notification is dispatched as a fire-and-forget daemon thread. Failures are logged but not automatically retried.
+- **Replaced Redis cache recommendation with Django's built-in `DatabaseCache`** — no external cache service is needed. Run `python manage.py createcachetable` to create the cache table.
+- **Minimal test settings file added** (`django_comments/tests/settings.py`) — pytest can now be run directly without a separate Django project. Uses SQLite in-memory database and Django's `locmem` email backend.
+
+### Removed
+
+- Celery (`celery`) optional dependency removed from `pyproject.toml` and `setup.cfg`.
+- Redis (`redis`) optional dependency removed.
+- `celery` and `redis` packages removed from `requirements-dev.txt`.
+
+### Fixed
+
+- `test_notifications.py` — updated tests that referenced the removed `_tasks_available` attribute (Celery-era) to use the threading-based `use_async` flag instead.
+- Added missing `from threading import Thread` import in `test_notifications.py`.
+
+---
+
 ## [1.0.0] - 2024-12-21
 
 ### 🎉 Initial Production Release
@@ -83,7 +104,7 @@ A complete, production-grade Django comments system with 280+ tests, comprehensi
   7. User unban notifications
   8. Flag threshold alerts
 - **Beautiful HTML Templates** - Professional email designs for all notification types
-- **Async Support** - Optional Celery integration with graceful fallback to sync
+- **Async Support** - Built-in threading for async notifications (no broker required)
 - **Configurable Recipients** - Per-notification-type email configuration
 - **Template Customization** - Override default templates easily
 - **SMTP Support** - Works with any Django email backend
@@ -199,8 +220,6 @@ A complete, production-grade Django comments system with 280+ tests, comprehensi
 
 #### Optional Dependencies
 - markdown 3.4.0+ (for Markdown support)
-- celery 5.3.0+ (for async notifications)
-- redis 4.5.0+ (for Celery broker)
 
 #### Database Support
 - PostgreSQL (recommended)
@@ -210,8 +229,8 @@ A complete, production-grade Django comments system with 280+ tests, comprehensi
 
 ### Performance
 - Optimized queries with select_related/prefetch_related
-- Built-in caching support (Redis recommended)
-- Async notification support via Celery
+- Built-in caching support (database cache recommended; Redis/Memcached also work)
+- Async notification support via built-in threading
 - Materialized path for efficient thread queries
 - Database indexes on frequently queried fields
 

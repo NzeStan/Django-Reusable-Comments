@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(.env/bin/pytest django_comments/tests/test_admin.py::CommentAdminDisplayMethodsTests::test_content_object_link_valid django_comments/tests/test_admin.py::CommentFlagAdminActionsTests::test_delete_flags_and_comments django_commands/tests/test_admin.py::BanStatusFilterTests::test_queryset_active --tb=long -q)",
+      "Bash(.env/bin/pytest django_comments/tests/test_admin.py::CommentAdminDisplayMethodsTests::test_content_object_link_valid django_comments/tests/test_admin.py::CommentFlagAdminActionsTests::test_delete_flags_and_comments django_comments/tests/test_admin.py::BanStatusFilterTests::test_queryset_active --tb=long)"
+    ]
+  }
+}
