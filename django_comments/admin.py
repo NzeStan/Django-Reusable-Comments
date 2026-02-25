@@ -1,6 +1,6 @@
 from django.contrib import admin
 from django.contrib.contenttypes.models import ContentType
-from django.utils.html import format_html
+from django.utils.html import format_html, mark_safe
 from django.utils.translation import gettext_lazy as _
 from django.urls import reverse
 from django.db.models import Count, Q
@@ -349,8 +349,8 @@ class CommentAdmin(admin.ModelAdmin):
         """Display comment depth in thread."""
         depth = obj.depth
         if depth == 0:
-            return format_html('<span style="color: #417690; font-weight: bold;">Root</span>')
-        return format_html('↳ ' * depth + str(depth))
+            return mark_safe('<span style="color: #417690; font-weight: bold;">Root</span>')
+        return format_html('{}{}', '↳ ' * depth, depth)
     depth_display.short_description = _('Depth')
     
     def edit_history_link(self, obj):
